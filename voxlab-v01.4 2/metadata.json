@@ -1,0 +1,7 @@
+{
+  "name": " VoxLab v01.4",
+  "description": "An interactive web application for vocal training. It features a virtual piano to define your vocal range, guided exercises with real-time pitch feedback, and tools to help improve your singing.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

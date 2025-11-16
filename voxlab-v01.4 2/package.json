@@ -1,0 +1,20 @@
+
+{
+  "name": "vocal-lab-app",
+  "version": "1.0.0",
+  "description": "A simple server to host the VocalLab static web application.",
+  "main": "server.js",
+  "scripts": {
+    "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --loader:.tsx=tsx --jsx=automatic --define:process.env.NODE_ENV='\"production\"'",
+    "start": "npm run build && node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "esbuild": "^0.20.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
