@@ -38,4 +38,4 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        if: env.NETLIFY_AUTH_TOKEN != ''
+        if: secrets.NETLIFY_AUTH_TOKEN != ''
