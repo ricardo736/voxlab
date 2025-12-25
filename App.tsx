@@ -1,437 +1,34 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Note, VocalRange, Exercise, NoteNodes, VocalRangeEntry, Language, Theme, TestStep, Routine, ActiveView, AppMode, isMidiExercise } from './types';
-import { TranslationKey } from './i18n';
-import { EXERCISES, LANGUAGES, THEMES, ROUTINES } from './constants';
-import { generateNotes, noteToFrequency, frequencyToNote, lerp, semitoneToNoteName } from './utils';
+import { Note, VocalRange, Exercise, VocalRangeEntry, Theme, Routine, ActiveView, isMidiExercise } from './types';
+import { EXERCISES, THEMES, ROUTINES } from './constants';
+import { generateNotes } from './utils';
 import { getExercisePattern, getExerciseId } from './exerciseUtils';
 import Piano from './components/Piano';
 import ExerciseView from './components/ExerciseView';
 import ExerciseGameViewALTWrapper from './components/ExerciseGameViewALTWrapper';
 import ErrorBoundary from './components/ErrorBoundary';
 import AIExerciseView from './components/AIExerciseView';
-import InputVolumeMeter from './components/InputVolumeMeter';
 import FloatingMenu from './components/FloatingMenu';
-// Fix: Use default import for VocalRangeTestScreen.
 import VocalRangeTestScreen from './components/VocalRangeTestScreen';
 import SettingsOverlay from './components/SettingsOverlay';
 import { useTranslation } from './hooks/useTranslation';
 import RoutineView from './components/RoutineView';
 import ComingSoonView from './components/ComingSoonView';
 import VoxLabAIView from './components/AIStudioView';
-
 import TestModeView from './components/TestModeView';
 import FavoritesView from './components/FavoritesView';
-import InstrumentTuner from './components/InstrumentTuner';
 import ThemedButton from './components/ThemedButton';
-import OrbVisualizer from './components/OrbVisualizer';
 import FeedbackOverlay from './components/FeedbackOverlay';
 import splashVideo from './visuals/sphere_v2.mp4';
 
-// --- CONFIGURATION FOR CUSTOM SOUNDS ---
-// 1. Create a folder named "sounds" in your project root (next to index.html).
-// 2. Put your MP3 files there.
-// 3. Name them exactly like the note names (e.g., "C4.mp3", "C#4.mp3", "Ab4.mp3").
-//    Note: Use "s" instead of "#" if you prefer (e.g. "Cs4.mp3"), just update the fetching logic.
-const CUSTOM_SAMPLES_URL = "/sounds/";
-// ---------------------------------------
+// Import custom hooks
+import { useSettings } from './hooks/useSettings';
+import { useExercise } from './hooks/useExercise';
+import { useSampleLoader } from './hooks/useSampleLoader';
+import { useAudio } from './hooks/useAudio';
+import { usePitchDetection } from './hooks/usePitchDetection';
 
-const pitchProcessorCode = `
-class PitchProcessor extends AudioWorkletProcessor {
-    constructor(options) {
-        super();
-        this.analysisBufferSize = 2048;
-        this.buffer = new Float32Array(this.analysisBufferSize);
-        this.bufferPos = 0;
-        this.lastGain = 0;
-        this.noiseGateThreshold = options.processorOptions.noiseGateThreshold || 0.008;
-        this.algorithm = options.processorOptions.algorithm || 'pyin'; // Default to pyin
-        
-        // pYIN-specific parameters
-        this.pyinBias = options.processorOptions.pyinBias || 2.0;
-        this.pyinGateMode = options.processorOptions.pyinGateMode || 'smooth';
-        this.pyinHistory = null; // For temporal smoothing
-        this.smoothRms = 0; // For smooth gate mode
-        
-        this.port.onmessage = (event) => {
-            if (event.data.noiseGateThreshold !== undefined) {
-                this.noiseGateThreshold = event.data.noiseGateThreshold;
-            }
-            if (event.data.algorithm) {
-                this.algorithm = event.data.algorithm;
-            }
-            if (event.data.pyinBias !== undefined) {
-                this.pyinBias = event.data.pyinBias;
-            }
-            if (event.data.pyinGateMode) {
-                this.pyinGateMode = event.data.pyinGateMode;
-            }
-        };
-    }
-
-
-    static get parameterDescriptors() {
-        return [];
-    }
-    
-    // McLeod Pitch Method (MPM) - professional-grade pitch detection for voice
-    mcleodPitchMethod(buffer, sampleRate) {
-        const bufferSize = buffer.length;
-        const minPeriod = Math.floor(sampleRate / 2000); // 2000 Hz max
-        const maxPeriod = Math.floor(sampleRate / 30);   // 30 Hz min
-        
-        // Step 1: Normalized Square Difference Function (NSDF)
-        const nsdf = new Array(maxPeriod + 1).fill(0);
-        
-        for (let tau = 0; tau <= maxPeriod; tau++) {
-            let acf = 0;
-            let divisorM = 0;
-            
-            for (let i = 0; i < bufferSize - tau; i++) {
-                acf += buffer[i] * buffer[i + tau];
-                divisorM += buffer[i] * buffer[i] + buffer[i + tau] * buffer[i + tau];
-            }
-            
-            nsdf[tau] = divisorM > 0 ? (2 * acf) / divisorM : 0;
-        }
-        
-        // Step 2: Peak picking - find positive zero crossings
-        const peaks = [];
-        for (let tau = minPeriod; tau < maxPeriod - 1; tau++) {
-            if (nsdf[tau] > 0 && nsdf[tau] > nsdf[tau - 1] && nsdf[tau] >= nsdf[tau + 1]) {
-                peaks.push({ period: tau, clarity: nsdf[tau] });
-            }
-        }
-        
-        if (peaks.length === 0) return -1;
-        
-        // Step 3: Find the best peak (highest clarity above threshold)
-        peaks.sort((a, b) => b.clarity - a.clarity);
-        const bestPeak = peaks[0];
-        
-        if (bestPeak.clarity < 0.90) return -1; // Very strong clarity threshold for stability
-        
-        // Step 4: Parabolic interpolation for sub-sample accuracy
-        const tau = bestPeak.period;
-        const y1 = nsdf[tau - 1];
-        const y2 = nsdf[tau];
-        const y3 = nsdf[tau + 1];
-        
-        const delta = 0.5 * (y3 - y1) / (2 * y2 - y1 - y3);
-        const refinedPeriod = tau + delta;
-        
-        return sampleRate / refinedPeriod;
-    }
-
-    // YIN Algorithm - simpler, faster alternative
-    yinPitchMethod(buffer, sampleRate) {
-        const bufferSize = buffer.length;
-        const threshold = 0.15; // Lower = more strict
-        const minPeriod = Math.floor(sampleRate / 2000);
-        const maxPeriod = Math.floor(sampleRate / 30);
-        
-        // Step 1: Difference function
-        const diff = new Float32Array(maxPeriod + 1);
-        for (let tau = 0; tau <= maxPeriod; tau++) {
-            let sum = 0;
-            for (let i = 0; i < bufferSize - tau; i++) {
-                const delta = buffer[i] - buffer[i + tau];
-                sum += delta * delta;
-            }
-            diff[tau] = sum;
-        }
-        
-        // Step 2: Cumulative mean normalized difference
-        const cmndf = new Float32Array(maxPeriod + 1);
-        cmndf[0] = 1;
-        let runningSum = 0;
-        for (let tau = 1; tau <= maxPeriod; tau++) {
-            runningSum += diff[tau];
-            cmndf[tau] = diff[tau] / (runningSum / tau);
-        }
-        
-        // Step 3: Absolute threshold
-        let tau = minPeriod;
-        while (tau < maxPeriod) {
-            if (cmndf[tau] < threshold) {
-                while (tau + 1 < maxPeriod && cmndf[tau + 1] < cmndf[tau]) {
-                    tau++;
-                }
-                break;
-            }
-            tau++;
-        }
-        
-        if (tau >= maxPeriod || cmndf[tau] >= threshold) return -1;
-        
-        // Step 4: Parabolic interpolation
-        let betterTau = tau;
-        if (tau > 0 && tau < maxPeriod) {
-            const s0 = cmndf[tau - 1];
-            const s1 = cmndf[tau];
-            const s2 = cmndf[tau + 1];
-            betterTau = tau + (s2 - s0) / (2 * (2 * s1 - s2 - s0));
-        }
-        
-        return sampleRate / betterTau;
-    }
-
-    // PYIN Algorithm - Probabilistic YIN with better accuracy (IMPROVED VERSION)
-    pyinPitchMethod(buffer, sampleRate) {
-        const bufferSize = buffer.length;
-        
-        // 1. Instantaneous RMS Calculation
-        let instantRms = 0;
-        for (let i = 0; i < bufferSize; i++) {
-            instantRms += buffer[i] * buffer[i];
-        }
-        instantRms = Math.sqrt(instantRms / bufferSize);
-
-        // 2. Smoothed RMS (Attack/Release smoothing)
-        const SMOOTHING_FACTOR = 0.95;
-        this.smoothRms = (instantRms * (1 - SMOOTHING_FACTOR)) + (this.smoothRms * SMOOTHING_FACTOR);
-
-        // 3. Noise Gate Logic
-        let rmsToUse = this.pyinGateMode === 'smooth' ? this.smoothRms : instantRms;
-
-        // The gate is only active if the threshold is > 0
-        if (this.noiseGateThreshold > 0 && rmsToUse < this.noiseGateThreshold) {
-            // Signal is too quiet
-            this.pyinHistory = null;
-            return -1;
-        }
-
-        // 4. YIN Steps 1 & 2: Difference & Cumulative Mean Normalization
-        const yinBufferLength = Math.floor(bufferSize / 2);
-        const yinBuffer = new Float32Array(yinBufferLength);
-
-        for (let t = 0; t < yinBufferLength; t++) {
-            yinBuffer[t] = 0;
-            for (let i = 0; i < yinBufferLength; i++) {
-                const delta = buffer[i] - buffer[i + t];
-                yinBuffer[t] += delta * delta;
-            }
-        }
-        yinBuffer[0] = 1;
-        let runningSum = 0;
-        for (let t = 1; t < yinBufferLength; t++) {
-            runningSum += yinBuffer[t];
-            // IMPROVED: Protect against division by zero
-            if (runningSum === 0) {
-                yinBuffer[t] = 1;
-            } else {
-                yinBuffer[t] *= t / runningSum;
-            }
-        }
-
-        // 5. Candidate Collection (find all valleys)
-        let candidates = [];
-        for (let t = 2; t < yinBufferLength - 1; t++) {
-            if (yinBuffer[t] < yinBuffer[t-1] && yinBuffer[t] < yinBuffer[t+1]) {
-                if (yinBuffer[t] < 1.0) {
-                    candidates.push({ tau: t, error: yinBuffer[t] });
-                }
-            }
-        }
-
-        if (candidates.length === 0) {
-            this.pyinHistory = null;
-            return -1;
-        }
-
-        // 6. Scoring: Combine Error Probability with Transition Probability
-        let bestScore = -1;
-        let bestTau = -1;
-
-        candidates.forEach(cand => {
-            // Base probability: lower error is better
-            let prob = Math.pow(1 - cand.error, 4);
-
-            // History Bias: Stick to previous note (Only apply if bias > 0)
-            if (this.pyinHistory && this.pyinHistory > 0 && this.pyinBias > 0) {
-                const prevTau = sampleRate / this.pyinHistory;
-                const ratio = Math.abs(cand.tau - prevTau) / prevTau;
-                
-                if (ratio < 0.1) {
-                    prob *= (1 + this.pyinBias); // Strongly prefer continuity
-                } else if (Math.abs(ratio - 0.5) < 0.05) {
-                    prob *= 0.5; // Penalize octave jumps
-                }
-            }
-
-            if (prob > bestScore) {
-                bestScore = prob;
-                bestTau = cand.tau;
-            }
-        });
-
-        if (bestScore < 0.01) {
-            this.pyinHistory = null;
-            return -1;
-        }
-
-        // 7. Parabolic refinement - IMPROVED: Bounds checking
-        if (bestTau <= 0 || bestTau >= yinBufferLength - 1) {
-            this.pyinHistory = null;
-            return -1;
-        }
-
-        let s0 = yinBuffer[bestTau - 1];
-        let s1 = yinBuffer[bestTau];
-        let s2 = yinBuffer[bestTau + 1];
-        let adjustment = (s2 - s0) / (2 * (2 * s1 - s2 - s0));
-        const finalTau = bestTau + adjustment;
-
-        const pitch = sampleRate / finalTau;
-        this.pyinHistory = pitch;
-        return pitch;
-    }
-
-    // SWIPE Algorithm - Sawtooth Waveform Inspired Pitch Estimator
-    swipePitchMethod(buffer, sampleRate) {
-        const bufferSize = buffer.length;
-        const minFreq = 30;
-        const maxFreq = 2000;
-        const numCandidates = 100;
-        
-        // Generate candidate frequencies (log-spaced)
-        const candidates = [];
-        const logMin = Math.log(minFreq);
-        const logMax = Math.log(maxFreq);
-        for (let i = 0; i < numCandidates; i++) {
-            const logFreq = logMin + (logMax - logMin) * i / (numCandidates - 1);
-            candidates.push(Math.exp(logFreq));
-        }
-        
-        // Calculate strength for each candidate
-        let maxStrength = 0;
-        let bestFreq = -1;
-        
-        for (const freq of candidates) {
-            const period = sampleRate / freq;
-            let strength = 0;
-            let count = 0;
-            
-            // Prime-based subharmonic summation
-            for (let k = 1; k <= 5; k++) {
-                const tau = Math.round(period * k);
-                if (tau < bufferSize) {
-                    let localSum = 0;
-                    for (let i = 0; i < bufferSize - tau; i++) {
-                        localSum += buffer[i] * buffer[i + tau];
-                    }
-                    strength += localSum / k;
-                    count++;
-                }
-            }
-            
-            if (count > 0) {
-                strength /= count;
-                if (strength > maxStrength) {
-                    maxStrength = strength;
-                    bestFreq = freq;
-                }
-            }
-        }
-        
-        return maxStrength > 0.01 ? bestFreq : -1;
-    }
-
-    // HPS Algorithm - Harmonic Product Spectrum
-    hpsPitchMethod(buffer, sampleRate) {
-        const bufferSize = buffer.length;
-        const fftSize = 2048;
-        
-        // Simple FFT approximation using autocorrelation
-        const spectrum = new Float32Array(fftSize / 2);
-        for (let k = 0; k < fftSize / 2; k++) {
-            let real = 0, imag = 0;
-            for (let n = 0; n < Math.min(bufferSize, fftSize); n++) {
-                const angle = -2 * Math.PI * k * n / fftSize;
-                real += buffer[n] * Math.cos(angle);
-                imag += buffer[n] * Math.sin(angle);
-            }
-            spectrum[k] = Math.sqrt(real * real + imag * imag);
-        }
-        
-        // Harmonic Product Spectrum (multiply downsampled versions)
-        const hps = new Float32Array(fftSize / 2);
-        for (let i = 0; i < fftSize / 2; i++) {
-            hps[i] = spectrum[i];
-        }
-        
-        // Multiply with 2nd, 3rd, 4th harmonics
-        for (let harmonic = 2; harmonic <= 4; harmonic++) {
-            for (let i = 0; i < fftSize / (2 * harmonic); i++) {
-                hps[i] *= spectrum[i * harmonic];
-            }
-        }
-        
-        // Find peak in HPS
-        let maxVal = 0;
-        let maxIdx = 0;
-        const minBin = Math.floor(30 * fftSize / sampleRate);
-        const maxBin = Math.floor(2000 * fftSize / sampleRate);
-        
-        for (let i = minBin; i < maxBin && i < hps.length; i++) {
-            if (hps[i] > maxVal) {
-                maxVal = hps[i];
-                maxIdx = i;
-            }
-        }
-        
-        if (maxVal < 0.01) return -1;
-        
-        // Convert bin to frequency
-        return maxIdx * sampleRate / fftSize;
-    }
-
-
-    process(inputs, outputs, parameters) {
-        const input = inputs[0];
-        if (input.length > 0) {
-            const channelData = input[0];
-            let sum = 0;
-            for (let i = 0; i < channelData.length; i++) {
-                sum += channelData[i] * channelData[i];
-            }
-            this.lastGain = Math.sqrt(sum / channelData.length);
-            const remainingSpace = this.analysisBufferSize - this.bufferPos;
-            const toCopy = Math.min(channelData.length, remainingSpace);
-            this.buffer.set(channelData.subarray(0, toCopy), this.bufferPos);
-            this.bufferPos += toCopy;
-            
-            if (this.bufferPos >= this.analysisBufferSize) {
-                let pitch = -1;
-                if (this.lastGain > this.noiseGateThreshold) { 
-                    // Select algorithm
-                    if (this.algorithm === 'yin') {
-                        pitch = this.yinPitchMethod(this.buffer, sampleRate);
-                    } else if (this.algorithm === 'pyin') {
-                        pitch = this.pyinPitchMethod(this.buffer, sampleRate);
-                    } else if (this.algorithm === 'swipe') {
-                        pitch = this.swipePitchMethod(this.buffer, sampleRate);
-                    } else if (this.algorithm === 'hps') {
-                        pitch = this.hpsPitchMethod(this.buffer, sampleRate);
-                    } else {
-                        pitch = this.mcleodPitchMethod(this.buffer, sampleRate);
-                    }
-                }
-                this.port.postMessage({ pitch, gain: this.lastGain });
-                this.bufferPos = 0;
-            } else {
-                 this.port.postMessage({ gain: this.lastGain });
-            }
-        }
-        return true;
-    }
-}
-try {
-    registerProcessor('pitch-processor', PitchProcessor);
-} catch (e) {
-    // Processor already registered, this is fine
-
-}
-`;
+const VocalRangeDisplay: React.FC<{ range: VocalRange, theme: Theme, onClick: () => void }> = React.memo(({ range, theme, onClick }) => {
 
 const VocalRangeDisplay: React.FC<{ range: VocalRange, theme: Theme, onClick: () => void }> = React.memo(({ range, theme, onClick }) => {
     const { t } = useTranslation();
@@ -508,12 +105,6 @@ const RoutineCompleteModal: React.FC<{ onFinish: () => void; theme: Theme }> = R
     );
 });
 
-// Optimization: Static Regex patterns defined outside component
-const NOTE_REGEX = /([a-gA-G])(#{1,2}|s|b{1,2})?\s*(-?\d+)$/;
-const MIDI_NOTE_REGEX = /(?:^|\D)(2[1-9]|[3-9]\d|10[0-8])(?:\D|$)/;
-const NORMALIZE_REGEX = /[_.-]/g;
-const SHARP_REGEX = /sharp/gi;
-const FLAT_REGEX = /flat/gi;
 
 // Beta Mode Feature Flag - Only show beta features when this is true
 const IS_BETA_MODE = (import.meta as any).env?.VITE_BETA_BUILD === 'true';
@@ -529,133 +120,197 @@ export default function App() {
         return () => clearTimeout(timer);
     }, []);
 
+    // Initialize custom hooks
     const { t, language, setLanguage } = useTranslation();
+    
+    // Settings hook
+    const settings = useSettings();
+    const {
+        themeId,
+        setThemeId,
+        themeMode,
+        setThemeMode,
+        compressorEnabled,
+        setCompressorEnabled,
+        frequencySeparationEnabled,
+        setFrequencySeparationEnabled,
+        pyinBias,
+        setPyinBias,
+        pyinTolerance,
+        setPyinTolerance,
+        pyinGateMode,
+        setPyinGateMode,
+        noiseGateThreshold,
+        setNoiseGateThreshold,
+        vocalRange,
+        setVocalRange,
+        favoriteExerciseIds,
+        setFavoriteExerciseIds,
+        favoriteRoutineIds,
+        setFavoriteRoutineIds,
+    } = settings;
+    
+    // Exercise hook
+    const exercise = useExercise();
+    const {
+        selectedExercise,
+        setSelectedExercise,
+        isPlaying,
+        setIsPlaying,
+        isExerciseComplete,
+        setIsExerciseComplete,
+        exerciseKey,
+        setExerciseKey,
+        exerciseRange,
+        setExerciseRange,
+        currentRoutine,
+        setCurrentRoutine,
+        isRoutineComplete,
+        setIsRoutineComplete,
+        savedAIExercises,
+        setSavedAIExercises,
+        aiResult,
+        setAiResult,
+        isPreviewing,
+        setIsPreviewing,
+    } = exercise;
+    
+    // Sample loader hook
+    const sampleLoader = useSampleLoader();
+    const {
+        instrumentLibraryRef,
+        failedSamplesRef,
+        activeInstrument,
+        setActiveInstrument,
+        availableInstruments,
+        setAvailableInstruments,
+        loadedSampleCount,
+        setLoadedSampleCount,
+        fetchAndDecodeSample,
+        checkAudioBuffers,
+        parseSampleInfo,
+        handleLoadLocalSamples: loadLocalSamples,
+        loadBuiltInPianoSamples,
+    } = sampleLoader;
+    
+    // Audio hook (needs some settings values)
+    const [compressorThreshold, setCompressorThreshold] = useState(-24);
+    const [compressorRatio, setCompressorRatio] = useState(4);
+    const [compressorRelease, setCompressorRelease] = useState(0.25);
+    
+    // Create a micStatus state for usePitchDetection
+    const [micStatus, setMicStatus] = useState(t('micStatusActivate'));
+    
+    const audio = useAudio(
+        t,
+        setMicStatus,
+        compressorThreshold,
+        compressorRatio,
+        compressorRelease
+    );
+    const {
+        audioCtxRef,
+        masterGainRef,
+        currentPlayingExerciseNoteNodesRef,
+        currentNonExerciseNoteNodesRef,
+        audioInitPromiseRef,
+        previewTimersRef,
+        latestPlayRequestRef,
+        currentlyPlayingNotesRef,
+        compressorNodeRef,
+        exerciseNoteVolume,
+        setExerciseNoteVolume,
+        metronomeVolume,
+        setMetronomeVolume,
+        initAudio,
+        playNote: audioPlayNote,
+        playMetronomeClick,
+        stopAllExerciseNotes,
+        stopAllNonExerciseNotes,
+    } = audio;
+    
+    // Pitch detection hook
+    const [gainValue, setGainValue] = useState(1);
+    const [autoGainEnabled, setAutoGainEnabled] = useState(true);
+    const [eqLowGain, setEqLowGain] = useState(0);
+    const [eqMidGain, setEqMidGain] = useState(0);
+    const [eqHighGain, setEqHighGain] = useState(0);
+    const pitchAlgorithm = 'yin'; // YIN is the best
+    
+    const pitchDetection = usePitchDetection(
+        t,
+        initAudio,
+        audioCtxRef,
+        autoGainEnabled,
+        noiseGateThreshold,
+        gainValue,
+        compressorEnabled,
+        frequencySeparationEnabled,
+        pyinBias,
+        pyinGateMode,
+        pitchAlgorithm,
+        compressorThreshold,
+        compressorRatio,
+        compressorRelease,
+        eqLowGain,
+        eqMidGain,
+        eqHighGain
+    );
+    const {
+        micActive,
+        setMicActive,
+        userPitch,
+        setUserPitch,
+        micGain,
+        setMicGain,
+        micStreamRef,
+        workletNodeRef,
+        workletModuleAddedRef,
+        lastPitchRef,
+        lastSmoothedPitchRef,
+        pitchBufferRef,
+        gainNodeRef,
+        eqLowNodeRef,
+        eqMidNodeRef,
+        eqHighNodeRef,
+        startPitchDetection,
+        stopPitchDetection,
+        handleMicToggle,
+    } = pitchDetection;
+    
+    // UI state
     const [uiView, setUiView] = useState<'main' | 'exercise'>('main');
     const uiViewRef = useRef<'main' | 'exercise'>('main'); // Track current uiView without dependency
     const [isMenuVisible, setIsMenuVisible] = useState(true);
     const [activeView, setActiveView] = useState<ActiveView>('home');
-    const [vocalRange, setVocalRange] = useState<VocalRange>({ start: null, end: null });
     const [vocalRangeHistory, setVocalRangeHistory] = useState<VocalRangeEntry[]>([]);
-    const [exerciseRange, setExerciseRange] = useState<VocalRange>({ start: null, end: null });
     const [showControls, setShowControls] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
     const [showEngineSettings, setShowEngineSettings] = useState(false);
     const [isTunerExpanded, setIsTunerExpanded] = useState(false);
     const [showMicPermissionDialog, setShowMicPermissionDialog] = useState(true);
-    const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [isExerciseComplete, setIsExerciseComplete] = useState(false);
-    const [isRoutineComplete, setIsRoutineComplete] = useState(false);
-    const [exerciseKey, setExerciseKey] = useState(0);
-    const [currentRoutine, setCurrentRoutine] = useState<{ routine: Routine; exerciseIndex: number } | null>(null);
-
-    const [exerciseNoteVolume, setExerciseNoteVolume] = useState(1.0);
-    const [metronomeVolume, setMetronomeVolume] = useState(0.3);
-
-    const [micActive, setMicActive] = useState(false);
-    const [userPitch, setUserPitch] = useState<number | null>(null);
-    const [micGain, setMicGain] = useState(0);
-    const [micStatus, setMicStatus] = useState(t('micStatusActivate'));
 
     const [isRangeTestActive, setIsRangeTestActive] = useState(false);
     const [showPianoForRangeSelection, setShowPianoForRangeSelection] = useState(false);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [themeId, setThemeId] = useState<string>(THEMES[0].id);
-    const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
 
     const [isRangeCheckModalOpen, setIsRangeCheckModalOpen] = useState(false);
     const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
     const [postRangeTestAction, setPostRangeTestAction] = useState<(() => void) | null>(null);
 
-    const [savedAIExercises, setSavedAIExercises] = useState<Exercise[]>([]);
-    const [aiResult, setAiResult] = useState<Exercise | null>(null); // Persist AI result
-    const [favoriteExerciseIds, setFavoriteExerciseIds] = useState<string[]>([]);
-    const [favoriteRoutineIds, setFavoriteRoutineIds] = useState<string[]>([]);
-
     const [isFullscreen, setIsFullscreen] = useState(false);
-
-    // New states for cancellable preview and leave confirmation
-    const [isPreviewing, setIsPreviewing] = useState(false);
-
-    // Loaded samples count for settings UI
-    const [loadedSampleCount, setLoadedSampleCount] = useState(0);
-
-
-    const audioCtxRef = useRef<AudioContext | null>(null);
-    const micStreamRef = useRef<MediaStream | null>(null);
-    const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-    const workletModuleAddedRef = useRef(false); // Track if pitch-processor module is registered
-    const masterGainRef = useRef<GainNode | null>(null);
-    const currentPlayingExerciseNoteNodesRef = useRef<Set<NoteNodes>>(new Set());
-    const currentNonExerciseNoteNodesRef = useRef<Set<NoteNodes>>(new Set());
-    const audioInitPromiseRef = useRef<Promise<boolean> | null>(null);
-    const previewTimersRef = useRef<number[]>([]);
-    const latestPlayRequestRef = useRef<number>(0);
-
-    // 🎯 AUDIO FEEDBACK PREVENTION: Track currently playing notes to filter from pitch detection
-    const currentlyPlayingNotesRef = useRef<Set<number>>(new Set()); // Store semitones of currently playing exercise notes
-
-    // Sample Management
-    // Changed from simple map to Library of instruments
-    const instrumentLibraryRef = useRef<Record<string, Map<number, AudioBuffer>>>({});
-    const failedSamplesRef = useRef<Set<number>>(new Set()); // We track failed fetches generally, less critical for local
-
-    const [activeInstrument, setActiveInstrument] = useState<string>('Default');
-    const [availableInstruments, setAvailableInstruments] = useState<string[]>([]);
-
+    
     // Centralized View & Audio Controls State
     const [centerSemitone, setCenterSemitone] = useState(0);
     const [visibleOctaves, setVisibleOctaves] = useState(0.7);
     const [autoFitEnabled, setAutoFitEnabled] = useState(false); // Disabled by default so notes are visible
     const [isPitchGridExpanded, setIsPitchGridExpanded] = useState(false);
-    const [gainValue, setGainValue] = useState(1);
-    const [noiseGateThreshold, setNoiseGateThreshold] = useState(0.008); // Default from pYIN tuner
-    const [compressorThreshold, setCompressorThreshold] = useState(-24);
-    const [compressorRatio, setCompressorRatio] = useState(4); // Calibrated default
-    const [compressorRelease, setCompressorRelease] = useState(0.25);
-    const [autoGainEnabled, setAutoGainEnabled] = useState(true);
-    const [eqLowGain, setEqLowGain] = useState(0);
-    const [eqMidGain, setEqMidGain] = useState(0);
-    const [eqHighGain, setEqHighGain] = useState(0);
-
-    // pYIN-specific parameters
-    const [pyinBias, setPyinBias] = useState<number>(2.0); // Default stickiness
-    const [pyinTolerance, setPyinTolerance] = useState<number>(0.3); // Default tolerance (30%)
-    const [pyinGateMode, setPyinGateMode] = useState<'smooth' | 'instant'>('smooth');
-
-    // --- COMPRESSOR CONTROL ---
-    const [compressorEnabled, setCompressorEnabled] = useState(false);
-
-
-    // --- FREQUENCY SEPARATION (Anti-Feedback) ---
-    const [frequencySeparationEnabled, setFrequencySeparationEnabled] = useState(true);
-
-
-    // --- PITCH DETECTION ALGORITHM ---
-    const pitchAlgorithm = 'yin'; // YIN is the best
-
-    // --- VISUALIZER MODE ---
-
-
-    // Store the last valid pitch for sanity checks
-    const lastPitchRef = useRef<number | null>(null);
 
     const [autoFitTarget, setAutoFitTarget] = useState<number | null>(null);
     const [exerciseNoteCenter, setExerciseNoteCenter] = useState<number | null>(null);
     const viewControlTargetsRef = useRef({ center: 0, octaves: 0.7 });
     const needsCameraSnapRef = useRef(false);
-
-    // Refs for audio processing nodes
-    const gainNodeRef = useRef<GainNode | null>(null);
-    const compressorNodeRef = useRef<DynamicsCompressorNode | null>(null);
-    const eqLowNodeRef = useRef<BiquadFilterNode | null>(null);
-    const eqMidNodeRef = useRef<BiquadFilterNode | null>(null);
-    const eqHighNodeRef = useRef<BiquadFilterNode | null>(null);
-
-    // For Smoothing input
-    const lastSmoothedPitchRef = useRef<number | null>(null);
-    const pitchBufferRef = useRef<number[]>([]);
 
     const activeTheme = useMemo(() => THEMES.find(p => p.id === themeId) || THEMES[0], [themeId]);
 
@@ -681,121 +336,17 @@ export default function App() {
         };
     }, []);
 
-
-
-    useEffect(() => {
-        const load = (k: string, s: (v: any) => void, d: any) => {
-            try {
-                const v = localStorage.getItem(k);
-                if (v) {
-                    const parsed = JSON.parse(v);
-                    // Fix: Validate and migrate legacy vocal range data (relative semitones -> MIDI)
-                    if (k === 'vocalRange' && parsed.start && parsed.start.semitone < 0) {
-                        console.warn('⚠️ Found legacy relative vocal range. Migrating to MIDI...');
-                        // Assuming -12 was C3 (48) and 12 was C5 (72)
-                        if (parsed.start.semitone < 24) parsed.start.semitone += 60;
-                        if (parsed.end && parsed.end.semitone < 24) parsed.end.semitone += 60;
-
-                        // Safety check: if still invalid, use defaults
-                        if (parsed.start.semitone < 0 || parsed.start.semitone > 127) {
-                            parsed.start = { note: 'C3', semitone: 48, frequency: 130.81 };
-                            parsed.end = { note: 'C5', semitone: 72, frequency: 523.25 };
-                        }
-                    }
-                    s(parsed);
-                } else {
-                    s(d);
-                }
-            } catch (e) {
-                console.error(`Error loading ${k}:`, e);
-                s(d);
-            }
-        };
-
-        load('language', setLanguage, LANGUAGES[0]);
-        load('themeId', setThemeId, THEMES[0].id);
-        load('themeMode', setThemeMode, 'light');
-        load('vocalRange', setVocalRange, { start: { note: 'C3', semitone: 48, frequency: 130.81 }, end: { note: 'C5', semitone: 72, frequency: 523.25 } });
-        load('micGain', setMicGain, 1.0);
-        load('compressorEnabled', setCompressorEnabled, false);
-        load('frequencySeparationEnabled', setFrequencySeparationEnabled, true);
-        load('pyinBias', setPyinBias, 2.0);
-        load('pyinTolerance', setPyinTolerance, 0.3);
-        load('pyinGateMode', setPyinGateMode, 'smooth');
-        load('noiseGateThreshold', setNoiseGateThreshold, 0.008);
-        load('favoriteExerciseIds', setFavoriteExerciseIds, []);
-        load('favoriteRoutineIds', setFavoriteRoutineIds, []);
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('language', JSON.stringify(language));
-    }, [language]);
-
-    useEffect(() => {
-        localStorage.setItem('themeId', JSON.stringify(themeId));
-    }, [themeId]);
-
-    useEffect(() => {
-        localStorage.setItem('themeMode', JSON.stringify(themeMode));
-    }, [themeMode]);
-
-    useEffect(() => {
-        localStorage.setItem('vocalRange', JSON.stringify(vocalRange));
-    }, [vocalRange]);
-
-    useEffect(() => {
-        localStorage.setItem('micGain', JSON.stringify(micGain));
-    }, [micGain]);
-
-    useEffect(() => {
-        localStorage.setItem('compressorEnabled', JSON.stringify(compressorEnabled));
-    }, [compressorEnabled]);
-
-    useEffect(() => {
-        localStorage.setItem('frequencySeparationEnabled', JSON.stringify(frequencySeparationEnabled));
-    }, [frequencySeparationEnabled]);
-
-    useEffect(() => {
-        localStorage.setItem('pyinBias', JSON.stringify(pyinBias));
-    }, [pyinBias]);
-
-    useEffect(() => {
-        localStorage.setItem('pyinTolerance', JSON.stringify(pyinTolerance));
-    }, [pyinTolerance]);
-
-    useEffect(() => {
-        localStorage.setItem('pyinGateMode', JSON.stringify(pyinGateMode));
-    }, [pyinGateMode]);
-
-    useEffect(() => {
-        localStorage.setItem('noiseGateThreshold', JSON.stringify(noiseGateThreshold));
-    }, [noiseGateThreshold]);
-
-    useEffect(() => {
-        localStorage.setItem('favoriteExerciseIds', JSON.stringify(favoriteExerciseIds));
-    }, [favoriteExerciseIds]);
-
-    useEffect(() => {
-        localStorage.setItem('favoriteRoutineIds', JSON.stringify(favoriteRoutineIds));
-    }, [favoriteRoutineIds]);
-
-
     useEffect(() => {
         if (!isRangeCheckModalOpen && vocalRange.start && pendingAction) {
-            pendingAction(); setPendingAction(null);
+            pendingAction();
+            setPendingAction(null);
         }
     }, [isRangeCheckModalOpen, vocalRange, pendingAction]);
-
-
 
     useEffect(() => {
         if (activeView !== 'range') setShowPianoForRangeSelection(false);
         if (isSettingsOpen) setIsSettingsOpen(false);
-    }, [activeView]);
-
-    useEffect(() => {
-        setMicStatus(micActive ? t('micStatusListening') : t('micStatusActivate'));
-    }, [micActive, t]);
+    }, [activeView, isSettingsOpen]);
 
     const initAudio = useCallback(async () => {
 
