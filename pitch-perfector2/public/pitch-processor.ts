@@ -2,7 +2,7 @@
 declare const sampleRate: number;
 declare function registerProcessor(
     name: string,
-    processorCtor: new (options?: any) => AudioWorkletProcessor
+    processorCtor: new (options?: PitchProcessorOptions) => AudioWorkletProcessor
 ): void;
 
 declare class AudioWorkletProcessor {
