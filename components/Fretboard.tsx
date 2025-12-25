@@ -29,7 +29,7 @@ export default function Fretboard({
     // Calculate fret positions (logarithmic spacing)
     const fretPositions = useMemo(() => {
         const positions = [];
-        let currentPos = 0;
+        const currentPos = 0;
         const scaleLen = width * 1.05; // Slightly larger than width to fit frets
 
         for (let i = 0; i <= fretCount; i++) {

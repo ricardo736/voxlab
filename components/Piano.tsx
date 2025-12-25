@@ -101,7 +101,7 @@ const Piano: React.FC<PianoProps> = ({ notes, onKeyClick, vocalRange, currentThe
                                 const isC4 = note.semitone === 0;
 
                                 let leftPosition = 0;
-                                let keyWidth = note.isSharp ? BLACK_KEY_SIZE : WHITE_KEY_SIZE;
+                                const keyWidth = note.isSharp ? BLACK_KEY_SIZE : WHITE_KEY_SIZE;
 
                                 if (note.isSharp) {
                                     const precedingWhiteKeyIndex = whiteKeys.findIndex(wk => wk.semitone === note.semitone - 1);
