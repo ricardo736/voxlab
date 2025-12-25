@@ -107,9 +107,6 @@ const RoutineCompleteModal: React.FC<{ onFinish: () => void; theme: Theme }> = R
     );
 });
 
-// Beta Mode Feature Flag - Only show beta features when this is true
-const IS_BETA_MODE = (import.meta as any).env?.VITE_BETA_BUILD === 'true';
-
 export default function App() {
 
     // Splash screen state
