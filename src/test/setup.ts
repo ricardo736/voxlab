@@ -92,10 +92,21 @@ class AudioContextMock {
   }
 }
 
-// @ts-ignore
-global.AudioContext = AudioContextMock;
-// @ts-ignore
-global.webkitAudioContext = AudioContextMock;
+// Properly type the global AudioContext
+declare global {
+  interface Window {
+    AudioContext: typeof AudioContextMock;
+    webkitAudioContext: typeof AudioContextMock;
+  }
+  
+  // eslint-disable-next-line no-var
+  var AudioContext: typeof AudioContextMock;
+  // eslint-disable-next-line no-var
+  var webkitAudioContext: typeof AudioContextMock;
+}
+
+global.AudioContext = AudioContextMock as any;
+global.webkitAudioContext = AudioContextMock as any;
 
 // Mock AudioWorklet
 class AudioWorkletMock {
