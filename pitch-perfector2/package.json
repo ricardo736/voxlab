@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "tsc public/pitch-processor.ts --target es2022 --lib ES2022,WebWorker --skipLibCheck",
     "build": "vite build",
     "preview": "vite preview"
   },
