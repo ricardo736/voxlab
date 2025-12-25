@@ -1,6 +1,8 @@
 import esbuild from 'esbuild';
 import postCSS from 'esbuild-postcss';
 
+// Build the app with esbuild
+// The postCSS plugin automatically generates bundle.css alongside bundle.js
 const result = await esbuild.build({
   entryPoints: ['index.tsx'],
   bundle: true,
