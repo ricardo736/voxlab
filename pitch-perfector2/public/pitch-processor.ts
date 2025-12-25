@@ -1,5 +1,27 @@
+interface Candidate {
+    tau: number;
+    error: number;
+}
+
+interface ProcessorOptions {
+    noiseGateThreshold?: number;
+    algorithm?: string;
+    pyinBias?: number;
+    pyinGateMode?: string;
+}
+
 class PitchProcessor extends AudioWorkletProcessor {
-    constructor(options) {
+    private analysisBufferSize: number;
+    private buffer: Float32Array;
+    private bufferPos: number;
+    private noiseGateThreshold: number;
+    private algorithm: string;
+    private pyinBias: number;
+    private pyinGateMode: string;
+    private pyinHistory: number | null;
+    private smoothRms: number;
+
+    constructor(options: { processorOptions: ProcessorOptions }) {
         super();
         this.analysisBufferSize = 2048;
         this.buffer = new Float32Array(this.analysisBufferSize);
@@ -16,14 +38,14 @@ class PitchProcessor extends AudioWorkletProcessor {
         this.pyinHistory = null;
         this.smoothRms = 0;
 
-        this.port.onmessage = (event) => {
+        this.port.onmessage = (event: MessageEvent) => {
             if (event.data.noiseGateThreshold !== undefined) this.noiseGateThreshold = event.data.noiseGateThreshold;
             if (event.data.pyinBias !== undefined) this.pyinBias = event.data.pyinBias;
         };
     }
 
     // --- pYIN ALGORITHM IMPLEMENTATION ---
-    pyinPitchMethod(buffer, sampleRate) {
+    pyinPitchMethod(buffer: Float32Array, sampleRate: number): number {
         const bufferSize = buffer.length;
 
         // 1. RMS Calculation & Noise Gate
@@ -68,7 +90,7 @@ class PitchProcessor extends AudioWorkletProcessor {
         }
 
         // 3. Candidate Collection (Valleys)
-        let candidates = [];
+        let candidates: Candidate[] = [];
         for (let t = 2; t < yinBufferLength - 1; t++) {
             if (yinBuffer[t] < yinBuffer[t - 1] && yinBuffer[t] < yinBuffer[t + 1]) {
                 if (yinBuffer[t] < 1.0) { // Threshold for candidacy
@@ -127,7 +149,7 @@ class PitchProcessor extends AudioWorkletProcessor {
         return pitch;
     }
 
-    process(inputs, outputs, parameters) {
+    process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean {
         const input = inputs[0];
         if (input.length > 0) {
             const channelData = input[0];

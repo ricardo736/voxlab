@@ -1,7 +1,0 @@
-{
-  "name": "Pitch Perfector v1.1",
-  "description": "A real-time pitch visualizer and vocal exercise game to help users improve their singing and instrumental intonation. Features a responsive UI, note detection, a playable game mode, and customizable settings.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
-}
