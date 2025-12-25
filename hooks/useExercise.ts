@@ -4,12 +4,16 @@ import { getExercisePattern, getExerciseId } from '../exerciseUtils';
 
 interface UseExerciseOptions {
     vocalRange: VocalRange;
+    exercises: Exercise[]; // Add exercises array
     stopAllExerciseNotes: () => void;
     stopAllNonExerciseNotes: () => void;
     onViewChange: (view: 'main' | 'exercise') => void;
     onMenuVisibilityChange: (visible: boolean) => void;
     onCameraUpdate: (center: number, octaves: number, snap: boolean) => void;
     onExerciseNoteCenter: (center: number | null) => void;
+    onActiveViewChange?: (view: string) => void; // Add optional callback for active view changes
+    playNote?: (semitone: number, duration: number, forExercise?: boolean) => Promise<void>; // Optional for preview
+    initAudio?: () => Promise<boolean>; // Optional for preview
 }
 
 interface UseExerciseReturn {
@@ -39,12 +43,16 @@ interface UseExerciseReturn {
 
 export function useExercise({
     vocalRange,
+    exercises,
     stopAllExerciseNotes,
     stopAllNonExerciseNotes,
     onViewChange,
     onMenuVisibilityChange,
     onCameraUpdate,
     onExerciseNoteCenter,
+    onActiveViewChange,
+    playNote,
+    initAudio,
 }: UseExerciseOptions): UseExerciseReturn {
     const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -159,10 +167,43 @@ export function useExercise({
     }, [stopAllExerciseNotes]);
 
     const handlePreview = useCallback(async () => {
-        // This will need access to playNote and initAudio from parent
-        // For now, we'll create a placeholder that can be overridden
-        console.warn('handlePreview needs to be implemented with playNote access');
-    }, []);
+        if (!selectedExercise || !exerciseRange.start) return;
+        if (isPreviewing) {
+            stopPreview();
+            return;
+        }
+
+        // Check if playNote and initAudio are available
+        if (!playNote || !initAudio) {
+            console.warn('handlePreview requires playNote and initAudio functions');
+            return;
+        }
+
+        await initAudio();
+        setIsPreviewing(true);
+
+        const timers: number[] = [];
+        let delay = 0;
+
+        // Handle legacy pattern-based exercises
+        if ('pattern' in selectedExercise && selectedExercise.pattern) {
+            selectedExercise.pattern.forEach(offset => {
+                const timer = window.setTimeout(() => {
+                    playNote(exerciseRange.start!.semitone + offset, selectedExercise.duration || 500, true);
+                }, delay);
+                timers.push(timer);
+                delay += selectedExercise.duration || 500;
+            });
+        }
+
+        const finalTimer = window.setTimeout(() => {
+            setIsPreviewing(false);
+            previewTimersRef.current = [];
+        }, delay + 100);
+        timers.push(finalTimer);
+        previewTimersRef.current = timers;
+
+    }, [selectedExercise, exerciseRange, initAudio, playNote, isPreviewing, stopPreview]);
 
     const handleStop = useCallback(() => {
         if (isPreviewing) stopPreview();
@@ -181,16 +222,16 @@ export function useExercise({
         onViewChange('main');
         onMenuVisibilityChange(true);
 
-        // Return to appropriate view - this will be handled by parent
+        // Return to appropriate view
         if (currentRoutine) {
             setCurrentRoutine(null);
-            // Parent should handle: setActiveView('routines');
+            onActiveViewChange?.('routines');
         } else if (isAIExercise) {
-            // Parent should handle: setActiveView('voxlabai');
+            onActiveViewChange?.('voxlabai');
         }
 
         onCameraUpdate(0, 0.7, true); // Reset camera
-    }, [currentRoutine, selectedExercise, stopAllExerciseNotes, stopAllNonExerciseNotes, isPreviewing, stopPreview, onViewChange, onMenuVisibilityChange, onExerciseNoteCenter, onCameraUpdate]);
+    }, [currentRoutine, selectedExercise, stopAllExerciseNotes, stopAllNonExerciseNotes, isPreviewing, stopPreview, onViewChange, onMenuVisibilityChange, onExerciseNoteCenter, onCameraUpdate, onActiveViewChange]);
 
     const handleExerciseComplete = useCallback(() => {
         setIsPlaying(false);
@@ -202,20 +243,30 @@ export function useExercise({
         const nextIndex = currentRoutine.exerciseIndex + 1;
         if (nextIndex < currentRoutine.routine.exerciseIds.length) {
             const nextExId = currentRoutine.routine.exerciseIds[nextIndex];
-            // This requires access to EXERCISES from parent
-            // For now, we'll emit an event that parent can handle
-            console.warn('handleNextExerciseInRoutine needs EXERCISES access from parent');
+            const nextEx = exercises.find(ex => getExerciseId(ex) === nextExId);
+            if (nextEx) {
+                setCurrentRoutine({ ...currentRoutine, exerciseIndex: nextIndex });
+                selectExercise(nextEx);
+                setTimeout(() => setIsPlaying(true), 200);
+            } else {
+                handleStop();
+            }
         } else {
             setIsPlaying(false);
             setIsExerciseComplete(false);
             setIsRoutineComplete(true);
         }
-    }, [currentRoutine]);
+    }, [currentRoutine, exercises, selectExercise, handleStop]);
 
     const handleStartRoutine = useCallback((routine: Routine) => {
-        // This also requires access to EXERCISES from parent
-        console.warn('handleStartRoutine needs EXERCISES access from parent');
-    }, []);
+        const firstEx = exercises.find(ex => getExerciseId(ex) === routine.exerciseIds[0]);
+        if (firstEx) {
+            setCurrentRoutine({ routine, exerciseIndex: 0 });
+            selectExercise(firstEx);
+        } else {
+            console.error('Could not find first exercise for routine', routine.id);
+        }
+    }, [exercises, selectExercise]);
 
     const handleRefineExercise = useCallback(async (currentExercise: Exercise, refinePrompt: string) => {
         try {
