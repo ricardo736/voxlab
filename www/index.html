@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>VoxLab - Vocal Training Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class', // Enable class-based dark mode
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <style>
+    /* iOS Safe Area Support */
+    :root {
+      --sat: env(safe-area-inset-top);
+      --sar: env(safe-area-inset-right);
+      --sab: env(safe-area-inset-bottom);
+      --sal: env(safe-area-inset-left);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      /* Prevent viewport bounce */
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      height: 100%;
+      viewport-fit: cover;
+      overscroll-behavior-y: none;
+      background-color: #0f172a;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      background-color: #0f172a;
+      min-height: 100%;
+    }
+
+    #root {
+      min-height: 100%;
+      width: 100%;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    @keyframes gradient-animation {
+      0% {
+        background-position: 0% 50%;
+      }
+
+      50% {
+        background-position: 100% 50%;
+      }
+
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    .animate-gradient {
+      background-size: 200% 200%;
+      animation: gradient-animation 10s ease infinite;
+    }
+
+    @keyframes gradient-animation-fast {
+      0% {
+        background-position: 0% 50%;
+      }
+
+      50% {
+        background-position: 100% 50%;
+      }
+
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    .animate-gradient-fast {
+      background-size: 400% 400%;
+      animation: gradient-animation-fast 4s ease infinite;
+    }
+
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+        transform: translateY(15px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-fade-in {
+      animation: fade-in 1.2s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    }
+
+    /* Crossfade for view transitions */
+    @keyframes crossfade-in {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    .view-transition {
+      animation: crossfade-in 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @keyframes fade-in-scale {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .animate-fade-in-scale {
+      animation: fade-in-scale 0.3s ease-out forwards;
+    }
+
+    @keyframes slide-in-right {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .animate-slide-in-right {
+      animation: slide-in-right 1.2s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    }
+
+    @keyframes slide-in-left {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .animate-slide-in-left {
+      animation: slide-in-left 1.2s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    }
+
+    @keyframes slide-up {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-slide-up {
+      animation: slide-up 1.3s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    }
+
+    @keyframes pulse-glow {
+
+      0%,
+      100% {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+      }
+
+      50% {
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.6);
+      }
+    }
+
+    .animate-pulse-glow {
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes float1 {
+      0% {
+        transform: translate(0, 0) scale(1);
+      }
+
+      50% {
+        transform: translate(40px, -60px) scale(1.2);
+      }
+
+      100% {
+        transform: translate(0, 0) scale(1);
+      }
+    }
+
+    @keyframes float2 {
+      0% {
+        transform: translate(0, 0) scale(1);
+      }
+
+      50% {
+        transform: translate(-50px, 70px) scale(0.8);
+      }
+
+      100% {
+        transform: translate(0, 0) scale(1);
+      }
+    }
+
+    .animate-float1 {
+      animation: float1 12s ease-in-out infinite;
+    }
+
+    .animate-float2 {
+      animation: float2 15s ease-in-out infinite;
+    }
+
+    /* Page transition wrapper */
+    .page-transition {
+      animation: fade-in 1s ease-out;
+    }
+
+    /* Smooth content transitions */
+    .content-fade {
+      transition: opacity 0.5s ease-in-out;
+    }
+
+    .content-fade-exit {
+      opacity: 0;
+    }
+
+    .content-fade-enter {
+      opacity: 1;
+    }
+
+    /* Standard button interactive classes */
+    .btn-interactive {
+      transition-property: all;
+      transition-duration: 300ms;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
+    }
+
+    .btn-interactive:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.05);
+    }
+
+    .btn-interactive:active {
+      transform: translateY(0) scale(0.98);
+      transition-duration: 200ms;
+    }
+
+    .btn-interactive:focus-visible {
+      outline: 2px solid theme('colors.violet.500');
+      outline-offset: 2px;
+    }
+
+    /* Smooth transitions for all interactive elements */
+    button,
+    a,
+    [role="button"] {
+      transition: transform 250ms ease, opacity 250ms ease;
+    }
+
+    /* Stagger animation for lists */
+    @keyframes stagger-fade-in {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .stagger-item {
+      animation: stagger-fade-in 0.7s ease-out backwards;
+    }
+
+    .stagger-item:nth-child(1) {
+      animation-delay: 0.1s;
+    }
+
+    .stagger-item:nth-child(2) {
+      animation-delay: 0.18s;
+    }
+
+    .stagger-item:nth-child(3) {
+      animation-delay: 0.26s;
+    }
+
+    .stagger-item:nth-child(4) {
+      animation-delay: 0.34s;
+    }
+
+    .stagger-item:nth-child(5) {
+      animation-delay: 0.42s;
+    }
+
+    .stagger-item:nth-child(6) {
+      animation-delay: 0.5s;
+    }
+
+    /* Loading pulse */
+    @keyframes loading-pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .animate-loading-pulse {
+      animation: loading-pulse 1.5s ease-in-out infinite;
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+  <!-- Hidden Netlify Form for Beta Feedback -->
+  <form name="beta-feedback" netlify netlify-honeypot="bot-field" hidden>
+    <input type="text" name="bot-field" />
+    <input type="email" name="email" />
+    <textarea name="feedback"></textarea>
+  </form>
+
+  <div id="root"></div>
+  <script>
+    const script = document.createElement('script');
+    // Append a random number to the script URL to bypass browser cache
+    script.type = "module";
+    script.src = `dist/bundle.js?v=${Date.now()}`;
+    script.defer = true;
+    document.body.appendChild(script);
+  </script>
+
+</body>
+
+</html>
