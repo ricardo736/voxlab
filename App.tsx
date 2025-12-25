@@ -861,8 +861,8 @@ export default function App() {
 
     // Load built-in Piano samples on app initialization
     useEffect(() => {
-        loadBuiltInPianoSamples();
-    }, [loadBuiltInPianoSamples]);
+        wrappedLoadBuiltInPianoSamples();
+    }, [wrappedLoadBuiltInPianoSamples]);
 
     return (
         <>
