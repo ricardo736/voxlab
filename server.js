@@ -34,6 +34,7 @@ const publicPath = path_1.default.join(__dirname);
 app.use(express_1.default.static(publicPath));
 // LAST: For any other request (NOT pitch-perfector), send the index.html file.
 // This is necessary for a Single Page Application (SPA).
+// Note: In production, rate limiting is handled by the hosting platform (e.g., Netlify, Vercel)
 app.get('*', (req, res, next) => {
     // Skip catch-all for pitch-perfector paths
     if (req.path.startsWith('/pitch-perfector2/')) {
