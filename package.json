@@ -4,9 +4,9 @@
   "description": "A simple server to host the VocalLab static web application.",
   "main": "server.js",
   "scripts": {
-    "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --public-path=/dist/ --loader:.tsx=tsx --loader:.mov=file --loader:.mp4=file --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --define:process.env.API_KEY='\"AIzaSyD0JEm3fqse7TQZ1ri2UWMmdtJigyX3fpo\"' --define:import.meta.env.VITE_BETA_BUILD='\"'${VITE_BETA_BUILD:-false}'\"'",
+    "build": "mkdir -p dist && node build.mjs && sed -e 's|dist/bundle\\.js|/dist/bundle.js|g' -e 's|/index\\.css|/dist/bundle.css|g' index.html > dist/index.html",
     "build:netlify": "sh build-netlify.sh",
-    "build:prod": "mkdir -p dist_prod && esbuild index.tsx --bundle --outfile=dist_prod/bundle.js --loader:.tsx=tsx --loader:.mov=file --loader:.mp4=file --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --define:process.env.API_KEY='\"AIzaSyD0JEm3fqse7TQZ1ri2UWMmdtJigyX3fpo\"' --define:import.meta.env.VITE_BETA_BUILD='\"'${VITE_BETA_BUILD:-false}'\"' && sed -e 's|dist/bundle\\.js|./bundle.js?v='$(date +%s)'|g' -e '/<link rel=\"stylesheet\" href=\"\\/index\\.css\">/d' index.html > dist_prod/index.html && mkdir -p dist_prod/sounds && cp -r sounds/* dist_prod/sounds/ 2>/dev/null || true && mkdir -p dist_prod/visuals && cp -r visuals/* dist_prod/visuals/ 2>/dev/null || true",
+    "build:prod": "mkdir -p dist_prod && node build.mjs && mv dist/bundle.js dist_prod/bundle.js && mv dist/bundle.css dist_prod/bundle.css && sed -e 's|dist/bundle\\.js|./bundle.js?v='$(date +%s)'|g' -e 's|/index\\.css|./bundle.css|g' index.html > dist_prod/index.html && mkdir -p dist_prod/sounds && cp -r sounds/* dist_prod/sounds/ 2>/dev/null || true && mkdir -p dist_prod/visuals && cp -r visuals/* dist_prod/visuals/ 2>/dev/null || true && rm -rf dist",
     "build:beta": "VITE_BETA_BUILD=true npm run build:netlify",
     "start": "npm run build && node server.js",
     "deploy": "npm run build:netlify"
@@ -23,6 +23,11 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1"
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^24.10.1",
+    "autoprefixer": "^10.4.23",
+    "esbuild-postcss": "^0.0.4",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18"
   }
 }
