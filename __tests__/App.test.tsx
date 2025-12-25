@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import App from '../App';
+import { LanguageProvider } from '../hooks/useTranslation';
 
 // Mock the Google GenAI module
 vi.mock('@google/genai', () => ({
@@ -15,22 +16,30 @@ vi.mock('@google/genai', () => ({
   })),
 }));
 
+const renderWithProviders = (ui: React.ReactElement) => {
+  return render(
+    <LanguageProvider>
+      {ui}
+    </LanguageProvider>
+  );
+};
+
 describe('App Component', () => {
   it('should render without crashing', () => {
-    render(<App />);
+    renderWithProviders(<App />);
     // Check if the app renders some expected element
     const rootElement = document.getElementById('root');
     expect(rootElement).toBeDefined();
   });
 
   it('should have proper structure', () => {
-    const { container } = render(<App />);
+    const { container } = renderWithProviders(<App />);
     expect(container).toBeDefined();
     expect(container.firstChild).toBeDefined();
   });
 
   it('should initialize with default state', () => {
-    render(<App />);
+    renderWithProviders(<App />);
     // The app should render without errors
     expect(document.body).toBeTruthy();
   });
@@ -38,13 +47,13 @@ describe('App Component', () => {
 
 describe('App Integration', () => {
   it('should handle audio context creation', () => {
-    render(<App />);
+    renderWithProviders(<App />);
     // Audio context should be mocked
     expect(global.AudioContext).toBeDefined();
   });
 
   it('should handle media devices', () => {
-    render(<App />);
+    renderWithProviders(<App />);
     expect(global.navigator.mediaDevices).toBeDefined();
     expect(global.navigator.mediaDevices.getUserMedia).toBeDefined();
   });
@@ -53,7 +62,7 @@ describe('App Integration', () => {
 describe('App Error Handling', () => {
   it('should render with ErrorBoundary', () => {
     // The app should be wrapped in an error boundary
-    render(<App />);
+    renderWithProviders(<App />);
     expect(document.body).toBeTruthy();
   });
 
@@ -63,10 +72,11 @@ describe('App Error Handling', () => {
     global.AudioContext = undefined;
     
     try {
-      render(<App />);
+      renderWithProviders(<App />);
       expect(document.body).toBeTruthy();
     } finally {
       global.AudioContext = originalAudioContext;
     }
   });
 });
+

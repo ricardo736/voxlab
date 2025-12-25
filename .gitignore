@@ -30,3 +30,6 @@ dist-ssr
 backups/
 *-backup-*
 *OLDREF*
+
+# Test coverage
+coverage/
