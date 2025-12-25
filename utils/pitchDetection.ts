@@ -30,7 +30,7 @@ export const detectPitchPYIN = (
 
     const SMOOTHING_FACTOR = 0.95;
     smoothRms = (instantRms * (1 - SMOOTHING_FACTOR)) + (smoothRms * SMOOTHING_FACTOR);
-    let rmsToUse = gateMode === 'smooth' ? smoothRms : instantRms;
+    const rmsToUse = gateMode === 'smooth' ? smoothRms : instantRms;
 
     if (gateThreshold > 0 && rmsToUse < gateThreshold) {
         pYinHistory = null;
@@ -60,7 +60,7 @@ export const detectPitchPYIN = (
     }
 
     // Candidates
-    let candidates = [];
+    const candidates = [];
     for (let t = 2; t < yinBufferLength - 1; t++) {
         if (yinBuffer[t] < yinBuffer[t - 1] && yinBuffer[t] < yinBuffer[t + 1]) {
             if (yinBuffer[t] < 1.0) {
@@ -108,10 +108,10 @@ export const detectPitchPYIN = (
         return -1;
     }
 
-    let s0 = yinBuffer[bestTau - 1];
-    let s1 = yinBuffer[bestTau];
-    let s2 = yinBuffer[bestTau + 1];
-    let adjustment = (s2 - s0) / (2 * (2 * s1 - s2 - s0));
+    const s0 = yinBuffer[bestTau - 1];
+    const s1 = yinBuffer[bestTau];
+    const s2 = yinBuffer[bestTau + 1];
+    const adjustment = (s2 - s0) / (2 * (2 * s1 - s2 - s0));
     const finalTau = bestTau + adjustment;
 
     const pitch = sampleRate / finalTau;

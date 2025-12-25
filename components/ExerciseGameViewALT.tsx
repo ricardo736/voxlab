@@ -92,8 +92,8 @@ const getCanvasTheme = (currentTheme?: any) => {
     const isDark = document.documentElement.classList.contains('dark');
 
     // Default colors (Violet/Fuchsia)
-    let primary = isDark ? '#a78bfa' : '#7c3aed'; // violet-400 : violet-600
-    let secondary = isDark ? '#f0abfc' : '#c026d3'; // fuchsia-400 : fuchsia-600
+    const primary = isDark ? '#a78bfa' : '#7c3aed'; // violet-400 : violet-600
+    const secondary = isDark ? '#f0abfc' : '#c026d3'; // fuchsia-400 : fuchsia-600
 
     // Override with currentTheme if available
     if (currentTheme) {
@@ -1003,7 +1003,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                 const cursorX = width * cursorRatio;
 
                 // Camera Logic - STATIC (Only follows exercise/key)
-                let dynamicCenterMidi = currentKeyMidi + 5;
+                const dynamicCenterMidi = currentKeyMidi + 5;
                 // REMOVED: Auto-adjustment based on user pitch
                 // if (!isPlaying && hasUserSignal) {
                 //     const { midi } = getNote(currentPitch);
@@ -1127,7 +1127,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                         let fillColor = canvasTheme.primary;
                         let strokeColor = canvasTheme.primary;
                         let glowColor = null;
-                        let label = null;
+                        const label = null;
                         let useGradient = false;
                         let gradientColors = null;
 

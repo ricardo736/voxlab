@@ -26,7 +26,7 @@ const PianoKey = forwardRef<HTMLDivElement, PianoKeyProps>(({ note, onClick, isS
     const animate = useCallback(() => {
         if (!keyRef.current) return;
 
-        let target = {
+        const target = {
             translateY: 0, scale: 1, shadowY: 2, shadowBlur: 12,
             glowOpacity: 0, glowSize: 12, reflectionX: 60, reflectionY: 45, reflectionOpacity: 0.7
         };

@@ -743,7 +743,7 @@ export default function App() {
 
     const parseSampleInfo = useCallback((filename: string): { semitone: number | null, instrument: string } => {
         // 1. Remove extension
-        let name = filename.replace(/\.[^/.]+$/, "");
+        const name = filename.replace(/\.[^/.]+$/, "");
 
         // 2. Normalize separators for splitting
         // We want to find the split between Instrument and Note
@@ -793,7 +793,7 @@ export default function App() {
                 // Instrument is harder to guess here, maybe everything before the number?
                 const splitIndex = midiMatch.index;
                 if (splitIndex !== undefined && splitIndex > 0) {
-                    let prefix = name.substring(0, splitIndex).replace(/[_.-]+$/, '').trim();
+                    const prefix = name.substring(0, splitIndex).replace(/[_.-]+$/, '').trim();
                     if (prefix.length > 0) instrument = prefix;
                 }
             }
@@ -1467,7 +1467,7 @@ export default function App() {
         const animId = requestAnimationFrame(animateView);
         function animateView() {
             let finalTargetCenter = viewControlTargetsRef.current.center;
-            let finalTargetOctaves = viewControlTargetsRef.current.octaves;
+            const finalTargetOctaves = viewControlTargetsRef.current.octaves;
 
             if (needsCameraSnapRef.current) {
                 setCenterSemitone(finalTargetCenter);
