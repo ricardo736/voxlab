@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Note, VocalRange, Exercise, NoteNodes, VocalRangeEntry, Language, Theme, TestStep, Routine, ActiveView, AppMode, isMidiExercise } from './types';
+import { Note, VocalRange, Exercise, NoteNodes, VocalRangeEntry, Language, Theme, TestStep, Routine, ActiveView, isMidiExercise } from './types';
 import { TranslationKey } from './i18n';
-import { EXERCISES, LANGUAGES, THEMES, ROUTINES } from './constants';
+import { EXERCISES, LANGUAGES, THEMES, ROUTINES, FREE_EXERCISE_IDS, FREE_ROUTINE_IDS } from './constants';
 import { generateNotes, noteToFrequency, frequencyToNote, lerp, semitoneToNoteName } from './utils';
 import { getExercisePattern, getExerciseId } from './exerciseUtils';
 import Piano from './components/Piano';
@@ -24,7 +24,10 @@ import FavoritesView from './components/FavoritesView';
 import InstrumentTuner from './components/InstrumentTuner';
 import ThemedButton from './components/ThemedButton';
 import OrbVisualizer from './components/OrbVisualizer';
-import FeedbackOverlay from './components/FeedbackOverlay';
+import PaywallView from './components/PaywallView';
+import RangeCheckModal from './components/RangeCheckModal';
+import RoutineCompleteModal from './components/RoutineCompleteModal';
+import { useSubscription } from './context/SubscriptionContext';
 import splashVideo from './visuals/sphere_v2.mp4';
 
 // --- CONFIGURATION FOR CUSTOM SOUNDS ---
@@ -451,63 +454,6 @@ const VocalRangeDisplay: React.FC<{ range: VocalRange, theme: Theme, onClick: ()
     );
 });
 
-const RangeCheckModal: React.FC<{ onDefine: () => void, onContinue: () => void, theme: Theme }> = React.memo(({ onDefine, onContinue, theme }) => {
-    const { t } = useTranslation();
-    const [show, setShow] = useState(false);
-
-    useEffect(() => {
-        const timer = requestAnimationFrame(() => setShow(true));
-        return () => cancelAnimationFrame(timer);
-    }, []);
-
-    const handleClose = useCallback((callback: () => void) => {
-        setShow(false);
-        setTimeout(callback, 300);
-    }, []);
-
-    return (
-        <div className={`fixed inset-0 bg-black/20 backdrop-blur-md z-[100] flex items-center justify-center p-4 transition-opacity duration-300 ease-out ${show ? 'opacity-100' : 'opacity-0'}`}>
-            <div className={`bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 max-w-sm w-full shadow-lg text-center transition-all duration-300 ease-out ${show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                <h3 className="text-xl font-bold text-black dark:text-white mb-2">{t('rangeCheckTitle')}</h3>
-                <p className="text-slate-600 dark:text-slate-300 mb-6">{t('rangeCheckPrompt')}</p>
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <button onClick={() => handleClose(onContinue)} className="btn-interactive flex-1 px-4 py-2.5 rounded-full font-semibold text-slate-700 dark:text-slate-200 bg-transparent backdrop-blur-sm border border-slate-400 dark:border-slate-500 shadow-sm hover:bg-slate-400/10 dark:hover:bg-slate-800/20">
-                        {t('continueAnyway')}
-                    </button>
-                    <ThemedButton theme={theme} onClick={() => handleClose(onDefine)}>
-                        {t('defineRange')}
-                    </ThemedButton>
-                </div>
-            </div>
-        </div>
-    );
-});
-
-const RoutineCompleteModal: React.FC<{ onFinish: () => void; theme: Theme }> = React.memo(({ onFinish, theme }) => {
-    const { t } = useTranslation();
-    const [show, setShow] = useState(false);
-
-    useEffect(() => {
-        const timer = requestAnimationFrame(() => setShow(true));
-        return () => cancelAnimationFrame(timer);
-    }, []);
-
-    const handleClose = useCallback(() => {
-        setShow(false);
-        setTimeout(onFinish, 300); // Animation duration
-    }, [onFinish]);
-
-    return (
-        <div className={`fixed inset-0 bg-black/20 backdrop-blur-md z-[100] flex items-center justify-center p-4 transition-opacity duration-300 ease-out ${show ? 'opacity-100' : 'opacity-0'}`}>
-            <div className={`bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl p-6 max-w-sm w-full shadow-lg text-center transition-all duration-300 ease-out ${show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-                <h3 className="text-xl font-bold text-black dark:text-white mb-2">{t('routineComplete')}</h3>
-                <p className="text-slate-600 dark:text-slate-300 mb-6">{t('drinkWaterSuggestion')}</p>
-                <ThemedButton onClick={handleClose} theme={theme} className="w-full">{t('finish')}</ThemedButton>
-            </div>
-        </div>
-    );
-});
-
 // Optimization: Static Regex patterns defined outside component
 const NOTE_REGEX = /([a-gA-G])(#{1,2}|s|b{1,2})?\s*(-?\d+)$/;
 const MIDI_NOTE_REGEX = /(?:^|\D)(2[1-9]|[3-9]\d|10[0-8])(?:\D|$)/;
@@ -516,7 +462,7 @@ const SHARP_REGEX = /sharp/gi;
 const FLAT_REGEX = /flat/gi;
 
 // Beta Mode Feature Flag - Only show beta features when this is true
-const IS_BETA_MODE = (import.meta as any).env?.VITE_BETA_BUILD === 'true';
+const IS_BETA_MODE = false;
 
 export default function App() {
 
@@ -530,6 +476,7 @@ export default function App() {
     }, []);
 
     const { t, language, setLanguage } = useTranslation();
+    const { isProUser } = useSubscription();
     const [uiView, setUiView] = useState<'main' | 'exercise'>('main');
     const uiViewRef = useRef<'main' | 'exercise'>('main'); // Track current uiView without dependency
     const [isMenuVisible, setIsMenuVisible] = useState(true);
@@ -1505,6 +1452,12 @@ export default function App() {
 
     const selectExercise = useCallback((ex: Exercise) => {
 
+        // Gate: non-pro users can only access free exercises (AI exercises always allowed for saved ones)
+        const exerciseId = getExerciseId(ex);
+        if (!isProUser && !(ex as any).isAIGenerated && !FREE_EXERCISE_IDS.includes(exerciseId)) {
+            setActiveView('paywall');
+            return;
+        }
 
         // GUARD: Prevent calling if already transitioning to or in exercise view with this exercise
         if (uiViewRef.current === 'exercise' && selectedExercise && getExerciseId(selectedExercise) === getExerciseId(ex)) {
@@ -1704,6 +1657,12 @@ export default function App() {
     }, [currentRoutine, selectExercise, handleStop]);
 
     const handleStartRoutine = useCallback((routine: Routine) => {
+
+        // Gate: non-pro users can only access free routines
+        if (!isProUser && !FREE_ROUTINE_IDS.includes(routine.id)) {
+            setActiveView('paywall');
+            return;
+        }
 
         // selectExercise already handles the range check via executeExerciseAction
         const firstEx = EXERCISES.find(ex => getExerciseId(ex) === routine.exerciseIds[0]);
@@ -2032,18 +1991,8 @@ export default function App() {
                         {uiView === 'main' && (
                             <div key={activeView} className="flex-grow flex flex-col animate-fade-in">
                                 {activeView === 'home' && (
-                                    <section className="relative flex-grow flex flex-col items-center justify-center text-center -mt-24 md:mt-0"><div className="relative z-10"><h1 className={`text-5xl md:text-6xl font-black bg-gradient-to-br ${activeTheme.gradientText.from} ${activeTheme.gradientText.to} ${activeTheme.gradientText.darkFrom} ${activeTheme.gradientText.darkTo} bg-clip-text text-transparent`}>{IS_BETA_MODE ? t('helloSinger') : 'Olá, vocalista!'}</h1>
-
-                                        {/* Beta Tester Subtitle */}
-                                        {IS_BETA_MODE && (
-                                            <div className="mt-4 flex flex-col items-center">
-                                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-3 max-w-xs mx-auto">
-                                                    {t('betaTestInvite')}
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        {!IS_BETA_MODE && <p className="mt-2 text-slate-600/60 dark:text-slate-400/60 text-xl">{t('letsPractice')}</p>}</div></section>
+                                    <section className="relative flex-grow flex flex-col items-center justify-center text-center -mt-24 md:mt-0"><div className="relative z-10"><h1 className={`text-5xl md:text-6xl font-black bg-gradient-to-br ${activeTheme.gradientText.from} ${activeTheme.gradientText.to} ${activeTheme.gradientText.darkFrom} ${activeTheme.gradientText.darkTo} bg-clip-text text-transparent`}>{t('helloSinger')}</h1>
+                                        <p className="mt-2 text-slate-600/60 dark:text-slate-400/60 text-xl">{t('letsPractice')}</p></div></section>
                                 )}
                                 {activeView === 'range' && <section className="flex-grow flex flex-col items-center justify-center -mt-24 md:mt-0">{showPianoForRangeSelection ? (<><Piano notes={pianoNotes} onKeyClick={handlePianoKeyClick} vocalRange={vocalRange} currentTheme={activeTheme} /><div className="flex flex-col items-center text-center mt-8"><p className="text-slate-600 dark:text-slate-300 text-lg mb-4">{t('selectRangeOnPiano')}</p><button onClick={() => { setShowPianoForRangeSelection(false); setVocalRange({ start: null, end: null }); }} className="btn-interactive px-6 py-2 rounded-full font-semibold text-slate-700 dark:text-slate-200 bg-white/60 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-300/50 dark:border-slate-600 shadow-sm">{t('goBack')}</button></div></>) : (<div className="flex flex-col items-center text-center"><p className="text-slate-600 dark:text-slate-300 text-lg mb-4">{t('vocalRangePrompt')}</p><div className="flex flex-col sm:flex-row gap-4"><ThemedButton onClick={() => handleStartRangeTest()} theme={activeTheme}>{t('detectMyRange')}</ThemedButton><button onClick={() => setShowPianoForRangeSelection(true)} className="btn-interactive px-6 py-2.5 rounded-full font-semibold text-slate-700 dark:text-slate-200 bg-white/60 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-300/50 dark:border-slate-600 shadow-sm">{t('iKnowMyRange')}</button></div></div>)}</section>}
                                 {/* Fix: Pass correct handler function 'handleToggleFavoriteRoutine' to 'onToggleFavorite' prop. */}
@@ -2052,7 +2001,7 @@ export default function App() {
                                 {/* Fix: Pass correct variables and handlers to FavoritesView props instead of using shorthand for undefined variables. */}
                                 {activeView === 'favorites' && <FavoritesView {...{ currentTheme: activeTheme, favoriteRoutineIds, favoriteExerciseIds, savedAIExercises, onStartRoutine: handleStartRoutine, onSelectExercise: selectExercise, onToggleFavoriteRoutine: handleToggleFavoriteRoutine, onToggleFavoriteExercise: handleToggleFavoriteExercise }} />}
                                 {/* Pitch detector and instrument tuner removed to simplify app */}
-                                {activeView === 'voxlabai' && <VoxLabAIView currentTheme={activeTheme} onStartExercise={handleStartGeneratedExercise} onSave={handleSaveAIExercise} savedAIExercises={savedAIExercises} favoriteExerciseIds={favoriteExerciseIds} onToggleFavorite={handleToggleFavoriteExercise} playNote={playNote} aiResult={aiResult} setAiResult={setAiResult} />}
+                                {activeView === 'voxlabai' && (isProUser ? <VoxLabAIView currentTheme={activeTheme} onStartExercise={handleStartGeneratedExercise} onSave={handleSaveAIExercise} savedAIExercises={savedAIExercises} favoriteExerciseIds={favoriteExerciseIds} onToggleFavorite={handleToggleFavoriteExercise} playNote={playNote} aiResult={aiResult} setAiResult={setAiResult} /> : <PaywallView currentTheme={activeTheme} onClose={() => setActiveView('home')} />)}
 
                                 {activeView === 'test' && <TestModeView currentTheme={activeTheme} vocalRange={exerciseRange} userPitch={userPitch} micGain={micGain} playNote={playNote} onToggleMic={handleMicToggle} micActive={micActive} compressorEnabled={compressorEnabled} setCompressorEnabled={setCompressorEnabled} frequencySeparationEnabled={frequencySeparationEnabled} setFrequencySeparationEnabled={setFrequencySeparationEnabled} pyinBias={pyinBias} setPyinBias={setPyinBias} pyinTolerance={pyinTolerance} setPyinTolerance={setPyinTolerance} pyinGateMode={pyinGateMode} setPyinGateMode={setPyinGateMode} noiseGateThreshold={noiseGateThreshold} setNoiseGateThreshold={setNoiseGateThreshold} onBack={() => setActiveView('home')} />}
                                 {activeView === 'studies' && <ComingSoonView title={t('studiesTitle')} description={t('studiesDesc')} currentTheme={activeTheme} />}
@@ -2130,8 +2079,9 @@ export default function App() {
                         isVisible={isMenuVisible}
                     />
                 </div>
-                {IS_BETA_MODE && <FeedbackOverlay currentTheme={activeTheme} activeView={activeView} currentExercise={selectedExercise} currentRoutine={currentRoutine} uiView={uiView} />}
             </div >
+            {/* Paywall overlay -- fixed modal, shown on top of any view */}
+            {activeView === 'paywall' && <PaywallView currentTheme={activeTheme} onClose={() => setActiveView('home')} />}
         </>
     );
 }

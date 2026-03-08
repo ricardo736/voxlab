@@ -9,12 +9,16 @@ rm -f dist/index.html # Force remove to avoid permission issues
 # Ensure dist exists
 mkdir -p dist
 
-# Use esbuild
-./node_modules/.bin/esbuild index.tsx --bundle --outfile=dist/bundle.js --loader:.tsx=tsx --loader:.mov=file --loader:.mp4=file --jsx=automatic --define:process.env.NODE_ENV='"production"' --define:process.env.API_KEY='"AIzaSyD0JEm3fqse7TQZ1ri2UWMmdtJigyX3fpo"' --define:import.meta.env.VITE_BETA_BUILD='"'$VITE_BETA_BUILD'"'
+# Build Tailwind CSS
+echo "Building Tailwind CSS..."
+npx @tailwindcss/cli -i index.css -o dist/index.css --minify
+
+# Use esbuild (API key comes from Netlify env var GEMINI_API_KEY, not hardcoded)
+./node_modules/.bin/esbuild index.tsx --bundle --outfile=dist/bundle.js --loader:.tsx=tsx --loader:.mov=file --loader:.mp4=file --jsx=automatic --define:process.env.NODE_ENV='"production"' --define:process.env.API_KEY='"'$GEMINI_API_KEY'"' --define:import.meta.env.VITE_BETA_BUILD='"'$VITE_BETA_BUILD'"'
 
 # 2. Process HTML
 echo "Processing HTML..."
-sed -e 's|dist/bundle\.js|./bundle.js?v='$(date +%s)'|g' -e '/<link rel="stylesheet" href="\/index\.css">/d' index.html > dist/index.html
+sed -e 's|dist/bundle\.js|./bundle.js?v='$(date +%s)'|g' -e 's|/index\.css|./index.css?v='$(date +%s)'|g' index.html > dist/index.html
 
 # 3. Copy Assets
 echo "Copying Assets..."

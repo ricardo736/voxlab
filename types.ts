@@ -70,7 +70,10 @@ export interface Routine {
 }
 
 // Type for main application views
-export type ActiveView = 'home' | 'range' | 'routines' | 'exercises' | 'pitch' | 'studies' | 'tokens' | 'voxlabai' | 'favorites' | 'instrumentTuner' | 'test';
+export type ActiveView = 'home' | 'range' | 'routines' | 'exercises' | 'pitch' | 'studies' | 'tokens' | 'voxlabai' | 'favorites' | 'instrumentTuner' | 'test' | 'paywall';
+
+// Subscription tier
+export type SubscriptionTier = 'free' | 'monthly' | 'annual';
 
 // Enum for the new, streamlined vocal range test flow
 export enum TestStep {

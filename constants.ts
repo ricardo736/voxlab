@@ -430,6 +430,22 @@ export const ROUTINES: Routine[] = [
 ];
 
 
+// --- Subscription: Free tier content ---
+// These exercises and routines are accessible without a subscription.
+// One per category to give users a taste of each type.
+export const FREE_EXERCISE_IDS: string[] = [
+    'FAM_002',  // Warmup: Descending Five Tone
+    'COOL_001', // Warmup: Gentle Slide Down
+    'EX_012',   // Technique: Vowel Purity Scale
+    'EX_007',   // Agility: Major Arpeggio
+    'EX_030',   // Agility: Rapid Consonants
+];
+
+export const FREE_ROUTINE_IDS: string[] = [
+    'warmup-quick',    // Quick Warmup
+    'warmup-complete', // Complete Warmup
+];
+
 // Piano layout constants
 export const WHITE_KEY_SLOT_WIDTH = 60;
 export const WHITE_KEY_SIZE = 54;

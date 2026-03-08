@@ -28,3 +28,12 @@ dist-ssr
 
 # Backups (large files)
 backups/
+pitch-perfector2-backup*/
+
+# Build output
+www/
+dist_deploy_final/
+
+# Unused large video assets (only sphere_v2.mp4 is used)
+visuals/sphere.mov
+visuals/sphere.mp4

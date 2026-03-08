@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, memo } from "react";
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGemini } from '../utils/geminiApi';
 import { Note } from "../types";
 import { detectPitchPYIN, resetPYINHistory } from '../utils/pitchDetection';
 
@@ -938,28 +938,19 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
     `;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const responseSchema = {
-        type: Type.OBJECT,
+        type: "OBJECT",
         properties: {
-          analysis: { type: Type.STRING },
-          singers: { type: Type.ARRAY, items: { type: Type.STRING } },
-          tip: { type: Type.STRING },
-          disclaimer: { type: Type.STRING },
+          analysis: { type: "STRING" },
+          singers: { type: "ARRAY", items: { type: "STRING" } },
+          tip: { type: "STRING" },
+          disclaimer: { type: "STRING" },
         },
         required: ['analysis', 'singers', 'tip', 'disclaimer']
       };
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: responseSchema,
-        },
-      });
-
-      const feedbackObject = JSON.parse(response.text);
+      const responseText = await callGemini({ prompt, schema: responseSchema, model: 'gemini-2.5-flash' });
+      const feedbackObject = JSON.parse(responseText);
       setGeneratedFeedback(feedbackObject);
     } catch (error) {
       console.error("Error generating vocal feedback:", error);

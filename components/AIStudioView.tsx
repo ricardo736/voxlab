@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { useTranslation } from '../hooks/useTranslation';
-import { GoogleGenAI, Type } from "@google/genai";
+import { callGemini } from '../utils/geminiApi';
 import { Exercise, Theme, MidiExercise } from '../types';
 import ThemedButton from './ThemedButton';
 import { Play, Square } from 'lucide-react';
@@ -68,33 +68,6 @@ const VoxLabAIView: React.FC<VoxLabAIViewProps> = ({ currentTheme, onStartExerci
     const previewClickedRef = useRef(false);
 
 
-    // API Key Management
-    const [userApiKey, setUserApiKey] = useState<string>('');
-    const [showApiKeyInput, setShowApiKeyInput] = useState(false);
-
-    // Check for API key on mount
-    React.useEffect(() => {
-        const envKey = process.env.API_KEY;
-        const storedKey = localStorage.getItem('voxlab_api_key');
-
-        if (envKey && envKey.length > 0 && envKey !== 'undefined') {
-            // Environment key exists and is valid
-            setShowApiKeyInput(false);
-        } else if (storedKey) {
-            // User has a stored key
-            setUserApiKey(storedKey);
-            setShowApiKeyInput(false);
-        } else {
-            // No key found anywhere
-            setShowApiKeyInput(true);
-        }
-    }, []);
-
-    const handleSaveApiKey = (key: string) => {
-        setUserApiKey(key);
-        localStorage.setItem('voxlab_api_key', key);
-        setShowApiKeyInput(false);
-    };
 
     const isSaved = useMemo(() => {
         if (!result) return false;
@@ -109,16 +82,6 @@ const VoxLabAIView: React.FC<VoxLabAIViewProps> = ({ currentTheme, onStartExerci
     const handleGenerate = async () => {
         if (!prompt || isLoading) return;
 
-        // Determine which key to use
-        const envKey = process.env.API_KEY;
-        const apiKeyToUse = (envKey && envKey.length > 0 && envKey !== 'undefined') ? envKey : userApiKey;
-
-        if (!apiKeyToUse) {
-            setShowApiKeyInput(true);
-            setError('Please enter a valid Google AI API Key to continue.');
-            return;
-        }
-
         setIsLoading(true);
         setError('');
         setResult(null);
@@ -126,7 +89,6 @@ const VoxLabAIView: React.FC<VoxLabAIViewProps> = ({ currentTheme, onStartExerci
         setIsRefining(false);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
             const fullPrompt = `Create a custom vocal exercise based on the following user request: "${prompt}". 
             
 The response MUST be a valid JSON object matching the provided schema (VoxLab Exercise Format v1.5).
@@ -201,78 +163,33 @@ Blues Scale with Rest:
 }`;
 
             const noteSchema = {
-                type: Type.OBJECT,
+                type: "OBJECT",
                 properties: {
-                    type: {
-                        type: Type.STRING,
-                        description: "Either 'note' (sing a pitch) or 'rest' (silence/breathing pause)"
-                    },
-                    semitone: {
-                        type: Type.INTEGER,
-                        description: "Semitones from root (0-12+). 0=root, 4=major 3rd, 7=perfect 5th, 12=octave. Required for 'note' type."
-                    },
-                    duration: {
-                        type: Type.NUMBER,
-                        description: "Duration in BEATS. 4.0=whole, 2.0=half, 1.0=quarter, 0.5=eighth, 0.25=sixteenth. Can use dotted: 1.5=dotted quarter."
-                    },
-                    lyric: {
-                        type: Type.STRING,
-                        description: "Optional syllable to sing (e.g., 'Ah', 'La', 'Do'). Only for 'note' type."
-                    }
+                    type: { type: "STRING", description: "Either 'note' (sing a pitch) or 'rest' (silence/breathing pause)" },
+                    semitone: { type: "INTEGER", description: "Semitones from root (0-12+). 0=root, 4=major 3rd, 7=perfect 5th, 12=octave. Required for 'note' type." },
+                    duration: { type: "NUMBER", description: "Duration in BEATS. 4.0=whole, 2.0=half, 1.0=quarter, 0.5=eighth, 0.25=sixteenth." },
+                    lyric: { type: "STRING", description: "Optional syllable to sing (e.g., 'Ah', 'La', 'Do'). Only for 'note' type." }
                 },
                 required: ["type", "duration"]
             };
 
             const schema = {
-                type: Type.OBJECT,
+                type: "OBJECT",
                 properties: {
-                    exercise_id: {
-                        type: Type.STRING,
-                        description: "Unique ID like 'AI_GEN_001'. Use 'AI_GEN_' prefix + timestamp or random number."
-                    },
-                    name: {
-                        type: Type.STRING,
-                        description: "A creative name for the exercise in the user's language."
-                    },
-                    category: {
-                        type: Type.STRING,
-                        description: "Choose one: 'warmUpsAndBasics', 'breathAndSupport', 'resonanceAndTone', 'pitchAndIntonation', 'scalesAndAgility', 'belting', 'cooldowns'"
-                    },
-                    key_center: {
-                        type: Type.STRING,
-                        description: "Starting pitch like 'C4', 'D4', 'A3'. Default to 'C4' if not specified."
-                    },
-                    tempo_bpm: {
-                        type: Type.INTEGER,
-                        description: "Tempo in BPM. Slow=60-80, Moderate=90-110, Fast=120-160."
-                    },
-                    time_signature: {
-                        type: Type.STRING,
-                        description: "Time signature like '4/4', '3/4', '6/8'. Default to '4/4'."
-                    },
-                    notes: {
-                        type: Type.ARRAY,
-                        description: "Array of note/rest objects. Each has type, semitone (for notes), duration, and optional lyric.",
-                        items: noteSchema
-                    },
-                    instructions: {
-                        type: Type.STRING,
-                        description: "Detailed, encouraging instructions in the user's language."
-                    }
+                    exercise_id: { type: "STRING", description: "Unique ID like 'AI_GEN_001'. Use 'AI_GEN_' prefix + timestamp or random number." },
+                    name: { type: "STRING", description: "A creative name for the exercise in the user's language." },
+                    category: { type: "STRING", description: "Choose one: 'warmUpsAndBasics', 'breathAndSupport', 'resonanceAndTone', 'pitchAndIntonation', 'scalesAndAgility', 'belting', 'cooldowns'" },
+                    key_center: { type: "STRING", description: "Starting pitch like 'C4', 'D4', 'A3'. Default to 'C4' if not specified." },
+                    tempo_bpm: { type: "INTEGER", description: "Tempo in BPM. Slow=60-80, Moderate=90-110, Fast=120-160." },
+                    time_signature: { type: "STRING", description: "Time signature like '4/4', '3/4', '6/8'. Default to '4/4'." },
+                    notes: { type: "ARRAY", description: "Array of note/rest objects.", items: noteSchema },
+                    instructions: { type: "STRING", description: "Detailed, encouraging instructions in the user's language." }
                 },
                 required: ["exercise_id", "name", "category", "key_center", "tempo_bpm", "time_signature", "notes", "instructions"]
             };
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash',
-                contents: fullPrompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: schema,
-                },
-            });
-
-            const jsonResult = JSON.parse(response.text);
+            const responseText = await callGemini({ prompt: fullPrompt, schema, model: 'gemini-2.0-flash' });
+            const jsonResult = JSON.parse(responseText);
             const exerciseResult: MidiExercise = {
                 ...jsonResult,
                 isAIGenerated: true,
@@ -281,11 +198,7 @@ Blues Scale with Rest:
 
         } catch (e) {
             console.error("Error calling Gemini API:", e);
-            setError('An error occurred while generating the exercise. Please check your API key and try again.');
-            // If it's an auth error, maybe prompt for key again?
-            if (String(e).includes('401') || String(e).includes('API key')) {
-                setShowApiKeyInput(true);
-            }
+            setError('An error occurred while generating the exercise. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -294,21 +207,10 @@ Blues Scale with Rest:
     const handleRefine = async () => {
         if (!refinePrompt || isRefineLoading || !result) return;
 
-        // Determine which key to use
-        const envKey = process.env.API_KEY;
-        const apiKeyToUse = (envKey && envKey.length > 0 && envKey !== 'undefined') ? envKey : userApiKey;
-
-        if (!apiKeyToUse) {
-            setShowApiKeyInput(true);
-            setError('Please enter a valid Google AI API Key to continue.');
-            return;
-        }
-
         setIsRefineLoading(true);
         setError('');
 
         try {
-            const ai = new GoogleGenAI({ apiKey: apiKeyToUse });
             const fullPrompt = `
                 I have a vocal exercise defined in JSON: ${JSON.stringify(result)}.
                 Please modify this exercise based on this request: "${refinePrompt}".
@@ -337,47 +239,22 @@ Blues Scale with Rest:
             `;
 
             const schema = {
-                type: Type.OBJECT,
+                type: "OBJECT",
                 properties: {
-                    name: { type: Type.STRING, description: "A creative name for the exercise." },
-                    desc: { type: Type.STRING, description: "A short, one-sentence description of the exercise's purpose." },
-                    instructions: { type: Type.STRING, description: "Detailed, step-by-step instructions on how to perform the exercise. Use clear and encouraging language." },
-                    pattern: {
-                        type: Type.ARRAY,
-                        description: "A sequence of semitone offsets from a starting note. E.g., a simple 5-tone scale is [0, 2, 4, 5, 7, 5, 4, 2, 0]. Keep it melodic and logical.",
-                        items: { type: Type.INTEGER }
-                    },
-                    bpm: {
-                        type: Type.INTEGER,
-                        description: "Tempo in beats per minute. Choose based on exercise type: slow warm-ups (60-80), moderate scales (90-110), fast agility (120-160)."
-                    },
-                    duration: {
-                        type: Type.NUMBER,
-                        description: "Default duration for all notes in BEATS. Use: whole=4, half=2, quarter=1, eighth=0.5, sixteenth=0.25."
-                    },
-                    durations: {
-                        type: Type.ARRAY,
-                        description: "Optional: Array of durations in BEATS for each note in the pattern. If provided, this overrides 'duration'. Must have the same length as 'pattern'.",
-                        items: { type: Type.NUMBER }
-                    },
-                    category: {
-                        type: Type.STRING,
-                        description: "The most fitting category for this exercise. Choose one of: 'Warm-ups & Basics', 'Breath & Support', 'Resonance & Tone', 'Pitch & Intonation', 'Scales & Agility', 'Belting', 'Cooldowns'."
-                    }
+                    name: { type: "STRING", description: "A creative name for the exercise." },
+                    desc: { type: "STRING", description: "A short, one-sentence description of the exercise's purpose." },
+                    instructions: { type: "STRING", description: "Detailed, step-by-step instructions on how to perform the exercise." },
+                    pattern: { type: "ARRAY", description: "Semitone offsets from starting note. E.g., [0, 2, 4, 5, 7, 5, 4, 2, 0].", items: { type: "INTEGER" } },
+                    bpm: { type: "INTEGER", description: "Tempo in BPM. Slow=60-80, Moderate=90-110, Fast=120-160." },
+                    duration: { type: "NUMBER", description: "Default duration in BEATS. whole=4, half=2, quarter=1, eighth=0.5, sixteenth=0.25." },
+                    durations: { type: "ARRAY", description: "Optional per-note durations in BEATS. Same length as 'pattern'.", items: { type: "NUMBER" } },
+                    category: { type: "STRING", description: "Choose one: 'Warm-ups & Basics', 'Breath & Support', 'Resonance & Tone', 'Pitch & Intonation', 'Scales & Agility', 'Belting', 'Cooldowns'." }
                 },
                 required: ["name", "desc", "instructions", "pattern", "bpm", "duration", "category"]
             };
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash',
-                contents: fullPrompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: schema,
-                },
-            });
-
-            const jsonResult = JSON.parse(response.text);
+            const responseText = await callGemini({ prompt: fullPrompt, schema, model: 'gemini-2.0-flash' });
+            const jsonResult = JSON.parse(responseText);
             const exerciseResult: Exercise = {
                 ...jsonResult,
                 id: result.id, // Keep ID to maintain identity if possible, or generate new one
@@ -411,32 +288,6 @@ Blues Scale with Rest:
                 <div className="relative border border-amber-400/50 bg-amber-50/50 dark:bg-amber-900/20 rounded-lg p-4 text-sm text-amber-800 dark:text-amber-300 mb-6">
                     <span className="font-bold">{t('beta')}:</span> {t('voxlabaiBeta')}
                 </div>
-
-                {showApiKeyInput && (
-                    <div className="mb-6 p-4 border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 rounded-lg">
-                        <label className="block text-sm font-bold text-violet-800 dark:text-violet-300 mb-2">
-                            Google AI API Key Required
-                        </label>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
-                            To use this feature, you need a Google AI API key. Get one for free at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-violet-600 underline">aistudio.google.com</a>.
-                        </p>
-                        <div className="flex gap-2">
-                            <input
-                                type="password"
-                                value={userApiKey}
-                                onChange={(e) => setUserApiKey(e.target.value)}
-                                placeholder="Paste your API key here"
-                                className="flex-1 p-2 text-sm rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-violet-500"
-                            />
-                            <button
-                                onClick={() => handleSaveApiKey(userApiKey)}
-                                className="px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded hover:bg-violet-700 transition-colors"
-                            >
-                                Save Key
-                            </button>
-                        </div>
-                    </div>
-                )}
 
                 <div className="space-y-4">
                     <textarea

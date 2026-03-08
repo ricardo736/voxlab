@@ -2,6 +2,14 @@
   publish = "dist"
   command = "npm run build:netlify"
 
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/gemini"
+  to = "/.netlify/functions/gemini"
+  status = 200
+
 [[redirects]]
   from = "/pitch-perfector2/*"
   to = "/pitch-perfector2/index.html"
