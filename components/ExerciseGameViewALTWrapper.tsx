@@ -57,6 +57,13 @@ const ExerciseGameViewALTWrapper: React.FC<ExerciseGameViewALTWrapperProps> = (p
     const [micActive, setMicActive] = useState(false);
     const [internalIsPlaying, setInternalIsPlaying] = useState(false);
     const animationFrameRef = useRef<number>();
+    const [isTransitioning, setIsTransitioning] = useState(true);
+
+    // Transition effect to hide glitch
+    useEffect(() => {
+        const timer = setTimeout(() => setIsTransitioning(false), 800);
+        return () => clearTimeout(timer);
+    }, []);
 
     // Piano sample buffers
     const pianoBuffersRef = useRef<Map<number, AudioBuffer>>(new Map());
@@ -93,9 +100,9 @@ const ExerciseGameViewALTWrapper: React.FC<ExerciseGameViewALTWrapperProps> = (p
                 await new Promise(resolve => setTimeout(resolve, 500));
 
                 // This will trigger the native browser/OS permission prompt
-                // echoCancellation: true helps prevent picking up the output audio
+                // echoCancellation: false to prevent system-level ducking when singing
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, autoGainControl: false, noiseSuppression: false }
+                    audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false }
                 });
                 streamRef.current = stream;
 
@@ -290,9 +297,9 @@ const ExerciseGameViewALTWrapper: React.FC<ExerciseGameViewALTWrapperProps> = (p
                 await audioContextRef.current.resume();
             }
 
-            // echoCancellation: true helps prevent picking up the output audio
+            // echoCancellation: false to prevent ducking
             const stream = await navigator.mediaDevices.getUserMedia({
-                audio: { echoCancellation: true, autoGainControl: false, noiseSuppression: false }
+                audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false }
             });
             streamRef.current = stream;
 
@@ -433,53 +440,36 @@ const ExerciseGameViewALTWrapper: React.FC<ExerciseGameViewALTWrapperProps> = (p
         source.playbackRate.value = playbackRate;
 
         const gainNode = ctx.createGain();
-        gainNode.gain.value = volume * 4.0; // Boost volume (4x)
+        gainNode.gain.value = volume * 2.0; // Moderate boost
 
         source.connect(gainNode);
 
-        // FREQUENCY SEPARATION: Band-stop filter for piano output
-        // Cut mid-range (700Hz-1000Hz) where voice lives, keep bass + highs
+        if (props.frequencySeparationEnabled) {
+            // FREQUENCY SEPARATION: Band-stop filter for piano output
+            // Cut mid-range (700Hz-1000Hz) where voice lives, keep bass + highs
+            const lowPassFilter = ctx.createBiquadFilter();
+            lowPassFilter.type = 'lowpass';
+            lowPassFilter.frequency.value = 750;
+            lowPassFilter.Q.value = 1.0;
 
-        // LOW PATH: Keep bass (below 700Hz)
-        const lowPassFilter = ctx.createBiquadFilter();
-        lowPassFilter.type = 'lowpass';
-        lowPassFilter.frequency.value = 700; // Only bass
-        lowPassFilter.Q.value = 1.0;
+            const highPassFilter = ctx.createBiquadFilter();
+            highPassFilter.type = 'highpass';
+            highPassFilter.frequency.value = 950;
+            highPassFilter.Q.value = 1.0;
 
-        // HIGH PATH: Keep brightness (above 1000Hz)
-        const highPassFilter = ctx.createBiquadFilter();
-        highPassFilter.type = 'highpass';
-        highPassFilter.frequency.value = 1000; // Only highs
-        highPassFilter.Q.value = 1.0;
+            const mergerGain = ctx.createGain();
+            mergerGain.gain.value = 1.0;
 
-        // Merger node to combine low + high paths
-        const mergerGain = ctx.createGain();
-        mergerGain.gain.value = 1.0;
-
-        // COMPRESSOR: Light thickening (reduced to avoid pumping)
-        const pianoCompressor = ctx.createDynamicsCompressor();
-        pianoCompressor.threshold.value = -20; // Raised from -30
-        pianoCompressor.knee.value = 10;
-        pianoCompressor.ratio.value = 3; // Reduced from 8
-        pianoCompressor.attack.value = 0.01;
-        pianoCompressor.release.value = 0.2;
-
-        // LIMITER: Final safety catch to prevent clipping
-        const limiter = ctx.createDynamicsCompressor();
-        limiter.threshold.value = -1.0;
-        limiter.knee.value = 0.0;
-        limiter.ratio.value = 20.0; // Hard limiting
-        limiter.attack.value = 0.001;
-        limiter.release.value = 0.1;
-
-        // Chain: Gain -> [LowPass + HighPass] -> Merger -> Compressor -> Limiter -> Out
-        gainNode.connect(lowPassFilter);
-        gainNode.connect(highPassFilter);
-        lowPassFilter.connect(mergerGain);
-        highPassFilter.connect(mergerGain);
-        mergerGain.connect(pianoCompressor);
-        pianoCompressor.connect(limiter);
-        limiter.connect(ctx.destination);
+            // Chain: Gain -> [LowPass + HighPass] -> Merger -> Out
+            gainNode.connect(lowPassFilter);
+            gainNode.connect(highPassFilter);
+            lowPassFilter.connect(mergerGain);
+            highPassFilter.connect(mergerGain);
+            mergerGain.connect(ctx.destination);
+        } else {
+            // Standard clean output
+            gainNode.connect(ctx.destination);
+        }
 
         source.start(startTime);
         source.stop(startTime + duration); // Stop exactly at duration - no tail
@@ -511,28 +501,34 @@ const ExerciseGameViewALTWrapper: React.FC<ExerciseGameViewALTWrapperProps> = (p
         gain.gain.linearRampToValueAtTime(1.0, now + 0.002); // Fast attack, 2x louder
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08); // Slightly longer decay
 
-        // FREQUENCY SEPARATION: Band-stop filter (same as piano)
-        // Cut mid-range (700Hz-1000Hz), keep bass + highs
-        const lowPassFilter = ctx.createBiquadFilter();
-        lowPassFilter.type = 'lowpass';
-        lowPassFilter.frequency.value = 700;
-        lowPassFilter.Q.value = 1.0;
-
-        const highPassFilter = ctx.createBiquadFilter();
-        highPassFilter.type = 'highpass';
-        highPassFilter.frequency.value = 1000;
-        highPassFilter.Q.value = 1.0;
-
-        const mergerGain = ctx.createGain();
-        mergerGain.gain.value = 1.0;
-
-        // Chain: osc -> gain -> [lowPass + highPass] -> merger -> out
         osc.connect(gain);
-        gain.connect(lowPassFilter);
-        gain.connect(highPassFilter);
-        lowPassFilter.connect(mergerGain);
-        highPassFilter.connect(mergerGain);
-        mergerGain.connect(ctx.destination);
+
+        if (props.frequencySeparationEnabled) {
+            // FREQUENCY SEPARATION: Band-stop filter (same as piano)
+            // Cut mid-range (700Hz-1000Hz), keep bass + highs
+            const lowPassFilter = ctx.createBiquadFilter();
+            lowPassFilter.type = 'lowpass';
+            lowPassFilter.frequency.value = 700;
+            lowPassFilter.Q.value = 1.0;
+
+            const highPassFilter = ctx.createBiquadFilter();
+            highPassFilter.type = 'highpass';
+            highPassFilter.frequency.value = 1000;
+            highPassFilter.Q.value = 1.0;
+
+            const mergerGain = ctx.createGain();
+            mergerGain.gain.value = 1.0;
+
+            // Chain: osc -> gain -> [lowPass + highPass] -> merger -> out
+            gain.connect(lowPassFilter);
+            gain.connect(highPassFilter);
+            lowPassFilter.connect(mergerGain);
+            highPassFilter.connect(mergerGain);
+            mergerGain.connect(ctx.destination);
+        } else {
+            // Standard clean output
+            gain.connect(ctx.destination);
+        }
 
         osc.start(now);
         osc.stop(now + 0.06);
@@ -602,6 +598,12 @@ const ExerciseGameViewALTWrapper: React.FC<ExerciseGameViewALTWrapperProps> = (p
                 getAudioContext={getAudioContext}
                 currentTheme={props.currentTheme}
             />
+            {/* Transition Overlay to hide canvas glitch */}
+            <div
+                className={`absolute inset-0 z-[100] bg-[#F3F4F6] dark:bg-[#0F172A] flex items-center justify-center transition-opacity duration-700 ease-out pointer-events-none ${isTransitioning ? 'opacity-100' : 'opacity-0'}`}
+            >
+                {/* Optional: Subtle loading spinner if needed, but clean fade is preferred */}
+            </div>
         </div>
     );
 };

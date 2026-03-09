@@ -883,6 +883,16 @@ const ExerciseGameViewALT: React.FC<ExerciseGameViewALTProps> = (props) => {
     const metronomeAnchorTimeRef = useRef<number>(0);
     const [isMetronomeOn, setIsMetronomeOn] = useState(true);
 
+    // Immediate ref updates for state used in the animation loop
+    const setUserPitchRef = useCallback((pitch: number | null) => {
+        userPitchRef.current = pitch;
+    }, []);
+
+    const setCurrentKeyMidiRef = useCallback((midi: number) => {
+        setCurrentKeyMidi(midi);
+        currentKeyMidiRef.current = midi;
+    }, []);
+
     const nextSequenceParamsRef = useRef<{ rootMidi: number, startTime: number } | null>(null);
     const directionRef = useRef<1 | -1>(1);
     const isLastSequenceScheduledRef = useRef(false);
@@ -1110,7 +1120,7 @@ const ExerciseGameViewALT: React.FC<ExerciseGameViewALTProps> = (props) => {
 
         scheduleEvent(() => {
             if (!isPlaying || isPausedRef.current || isExerciseComplete) return;
-            setCurrentKeyMidi(nextRootMidi);
+            setCurrentKeyMidiRef(nextRootMidi);
             scheduleNextSequence(nextRootMidi, nextSequenceAnchorTime);
         }, safeDelayMs);
 
@@ -1137,7 +1147,16 @@ const ExerciseGameViewALT: React.FC<ExerciseGameViewALTProps> = (props) => {
 
         // Adapt exercise starting keys based on vocalRange.min
         const startKey = vocalRange.min;
-        setCurrentKeyMidi(startKey);
+        setCurrentKeyMidiRef(startKey);
+
+        // Reset camera immediately to prevent "sliding" from old position
+        const startFreq = getFrequency(startKey + 5);
+        const octavesVisible = engineParams.verticalZoom;
+        const freqRatio = Math.pow(2, octavesVisible / 2);
+        cameraRef.current = {
+            minF: startFreq / freqRatio,
+            maxF: startFreq * freqRatio
+        };
 
         if (isMetronomeOn && audioContext) {
             scheduleMetronome(audioContext, exercise.tempo_bpm || (exercise as any).bpm || 120, metronomeRef, isMetronomeOn, anchorTime);
@@ -1264,17 +1283,27 @@ const ExerciseGameViewALT: React.FC<ExerciseGameViewALTProps> = (props) => {
 
 
     useEffect(() => {
-        const handleResize = () => {
-            if (containerRef.current) {
-                setDimensions({
-                    width: containerRef.current.clientWidth,
-                    height: containerRef.current.clientHeight
-                });
+        if (!containerRef.current) return;
+
+        const resizeObserver = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                const { width, height } = entry.contentRect;
+                if (width > 0 && height > 0) {
+                    setDimensions({ width, height });
+                }
             }
-        };
-        window.addEventListener('resize', handleResize);
-        handleResize();
-        return () => window.removeEventListener('resize', handleResize);
+        });
+
+        resizeObserver.observe(containerRef.current);
+
+        // Fallback/Initial check
+        const initialWidth = containerRef.current.clientWidth;
+        const initialHeight = containerRef.current.clientHeight;
+        if (initialWidth > 0 && initialHeight > 0) {
+            setDimensions({ width: initialWidth, height: initialHeight });
+        }
+
+        return () => resizeObserver.disconnect();
     }, []);
 
     useEffect(() => {
@@ -1769,20 +1798,20 @@ const ExerciseGameViewALT: React.FC<ExerciseGameViewALTProps> = (props) => {
                     </div>
                 </div>
 
-                <div className="absolute left-0 right-0 bottom-24 z-50 flex items-center justify-center gap-8 pointer-events-auto">
+                <div className="absolute left-0 right-0 bottom-48 z-50 flex items-center justify-center gap-12 pointer-events-auto">
                     {/* Back Button */}
                     <button
                         onClick={onExit}
-                        className={`w-16 h-16 rounded-full bg-yellow-400 hover:bg-yellow-300 border-2 border-yellow-500/20 text-yellow-900 flex items-center justify-center shadow-xl hover:scale-105 transition-all backdrop-blur-sm ${isPlaying && !isPaused ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}
+                        className={`w-24 h-24 rounded-full bg-yellow-400 hover:bg-yellow-300 border-2 border-yellow-500/20 text-yellow-900 flex items-center justify-center shadow-xl hover:scale-105 transition-all backdrop-blur-sm ${isPlaying && !isPaused ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}
                         aria-label="Exit exercise"
                     >
-                        <ArrowLeft size={28} />
+                        <ArrowLeft size={40} />
                     </button>
 
                     {/* Play/Pause Button */}
                     <button
                         onClick={handleCenterClick}
-                        className={`w-24 h-24 rounded-full group transition-all transform hover:scale-105 active:scale-95 text-white shadow-2xl overflow-hidden relative backdrop-blur-sm ${isPlaying && !isPaused ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}
+                        className={`w-32 h-32 rounded-full group transition-all transform hover:scale-105 active:scale-95 text-white shadow-2xl overflow-hidden relative backdrop-blur-sm ${isPlaying && !isPaused ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}
                         style={{
                             backgroundImage: `linear-gradient(to bottom right, #8b5cf6, #d946ef, #facc15)`,
                             boxShadow: `0 8px 32px rgba(217, 70, 239, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)`,
@@ -1792,18 +1821,18 @@ const ExerciseGameViewALT: React.FC<ExerciseGameViewALTProps> = (props) => {
                         <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shine ${isPaused ? 'opacity-0' : 'opacity-100'}`} style={{ animationName: 'shine', animationDuration: '0.7s', animationDelay: '0s', animationTimingFunction: 'linear', animationIterationCount: 'infinite', animationPlayState: 'running' }}></div>
                         <div className="relative z-10 flex items-center justify-center h-full w-full">
                             {isPlaying && !isPaused
-                                ? <Pause size={36} fill="currentColor" />
-                                : <Play size={36} fill="currentColor" className="ml-1" />}
+                                ? <Pause size={64} fill="currentColor" />
+                                : <Play size={64} fill="currentColor" className="ml-1" />}
                         </div>
                     </button>
 
                     {/* Restart Button */}
                     <button
                         onClick={onRestart}
-                        className={`w-16 h-16 rounded-full bg-white/90 backdrop-blur-md border border-slate-200 text-slate-700 flex items-center justify-center shadow-lg hover:bg-white hover:scale-105 transition-all ${isPlaying && !isPaused ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}
+                        className={`w-24 h-24 rounded-full bg-white/90 backdrop-blur-md border border-slate-200 text-slate-700 flex items-center justify-center shadow-lg hover:bg-white hover:scale-105 transition-all ${isPlaying && !isPaused ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}
                         aria-label="Restart game"
                     >
-                        <RotateCcw size={28} />
+                        <RotateCcw size={40} />
                     </button>
                 </div>
 

@@ -1,6 +1,6 @@
 {
   "name": "vocal-lab-app",
-  "version": "0.9.0",
+  "version": "0.9.5",
   "description": "A simple server to host the VocalLab static web application.",
   "main": "server.js",
   "scripts": {
@@ -12,6 +12,9 @@
     "deploy": "npm run build:netlify"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/ios": "^8.0.2",
     "@google/genai": "^1.30.0",
     "esbuild": "^0.20.2",
     "express": "^4.19.2",
@@ -23,6 +26,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1"
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
   }
 }

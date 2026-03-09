@@ -9,11 +9,11 @@ interface PianoKeyProps {
     isSelected: boolean;
     isInRange: boolean;
     style: React.CSSProperties;
-    mousePos: { x: number; y: number } | null;
+    mousePosRef: React.MutableRefObject<{ x: number; y: number } | null>;
     centerProximity: number;
 }
 
-const PianoKey = forwardRef<HTMLDivElement, PianoKeyProps>(({ note, onClick, isSelected, isInRange, style, mousePos, centerProximity }, ref) => {
+const PianoKey = forwardRef<HTMLDivElement, PianoKeyProps>(({ note, onClick, isSelected, isInRange, style, mousePosRef, centerProximity }, ref) => {
     const keyRef = useRef<HTMLButtonElement>(null);
     const isWhite = !note.isSharp;
 
@@ -51,6 +51,7 @@ const PianoKey = forwardRef<HTMLDivElement, PianoKeyProps>(({ note, onClick, isS
             target.translateY = 2;
         }
 
+        const mousePos = mousePosRef.current; // Read from Ref
         if (mousePos) {
             const rect = keyRef.current.getBoundingClientRect();
             const keyCenterX = rect.left + rect.width / 2;
@@ -96,7 +97,7 @@ const PianoKey = forwardRef<HTMLDivElement, PianoKeyProps>(({ note, onClick, isS
         keyRef.current.style.opacity = '1';
 
         animationFrameRef.current = requestAnimationFrame(animate);
-    }, [mousePos, isInRange, isSelected, centerProximity, isWhite]);
+    }, [isInRange, isSelected, centerProximity, isWhite, mousePosRef]);
 
     useEffect(() => {
         animationFrameRef.current = requestAnimationFrame(animate);

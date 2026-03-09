@@ -72,6 +72,9 @@ export interface Routine {
 // Type for main application views
 export type ActiveView = 'home' | 'range' | 'routines' | 'exercises' | 'pitch' | 'studies' | 'tokens' | 'voxlabai' | 'favorites' | 'instrumentTuner' | 'test';
 
+export type AppMode = 'normal' | 'beta'; // Added AppMode
+
+
 // Enum for the new, streamlined vocal range test flow
 export enum TestStep {
     LowestNote,

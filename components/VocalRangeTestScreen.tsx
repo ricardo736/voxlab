@@ -404,6 +404,8 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
 
   const notHearingYouFadeOutTimerRef = useRef<number | null>(null);
   const lastProgressRef = useRef(0);
+  const lastRmsUpdateRef = useRef(0);
+  const startTimeRef = useRef(performance.now());
 
   // Advanced Mode State
   const [lowNotePitches, setLowNotePitches] = useState<number[]>([]);
@@ -417,12 +419,16 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
 
   const activeTheme = currentTheme;
 
+  const statusTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const changeStatus = useCallback((newStatus: AppStatus, stateUpdateFn?: () => void) => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     setIsAnimatingOut(true);
-    setTimeout(() => {
+    statusTimerRef.current = setTimeout(() => {
       if (stateUpdateFn) stateUpdateFn();
       setStatus(newStatus);
       setIsAnimatingOut(false);
+      statusTimerRef.current = null;
     }, 300);
   }, []);
 
@@ -460,14 +466,14 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
     const ctx = metronomeAudioCtxRef.current;
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
-    oscillator.type = 'triangle';
-    oscillator.frequency.setValueAtTime(220, ctx.currentTime);
-    gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+    oscillator.type = 'sine'; // Sine is cleaner and punches through better on mobile speakers
+    oscillator.frequency.setValueAtTime(880, ctx.currentTime); // Higher pitch (A5) is easier to hear
+    gainNode.gain.setValueAtTime(0.8, ctx.currentTime); // Increased from 0.2 to 0.8 for visibility
     oscillator.connect(gainNode);
     gainNode.connect(ctx.destination);
     oscillator.start();
-    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-    oscillator.stop(ctx.currentTime + 0.3);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15); // Shorter, sharper tick
+    oscillator.stop(ctx.currentTime + 0.15);
   }, []);
 
   const stopAll = useCallback(() => {
@@ -519,7 +525,13 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
         await audioCtxRef.current.close();
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
       mediaStreamRef.current = stream;
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       audioCtxRef.current = new AudioContext();
@@ -664,7 +676,11 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
       // Most male voices are 85-180Hz, female 165-255Hz
       const validFreq = (freq > 70 && freq < 2000) ? freq : null;
       const rms = calculateRMS(dataArray);
-      setRmsVolume(prev => prev * 0.95 + rms * 0.05);
+      // Throttle RMS updates to ~30fps for performance
+      if (performance.now() - lastRmsUpdateRef.current > 32) {
+        setRmsVolume(prev => prev * 0.9 + rms * 0.1);
+        lastRmsUpdateRef.current = performance.now();
+      }
 
       if (rms < LOW_VOLUME_RMS_THRESHOLD) {
         lowVolumeFrameCountRef.current++;
@@ -1043,7 +1059,7 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
 
       return (
         <div className="flex flex-col items-center justify-center transition-all duration-500 min-h-[32rem]">
-          <div className={`absolute top-6 text-lg font-bold ${gradientTextClasses} tracking-widest`}>{mode === 'advanced' ? t('advancedStepHeader', { step }) : t('simpleStepHeader')}</div>
+          <div className={`absolute text-lg font-bold ${gradientTextClasses} tracking-widest`} style={{ top: 'max(1.5rem, env(safe-area-inset-top))' }}>{mode === 'advanced' ? t('advancedStepHeader', { step }) : t('simpleStepHeader')}</div>
           <div className="text-3xl font-extrabold text-black dark:text-white mb-6 mt-12">{getStepTitle()}</div>
           <div className="relative w-full h-40 flex items-center justify-center mb-6">
             {status === 'countdown' && countdownDisplay ? (
@@ -1052,7 +1068,7 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
               </div>
             ) : (
               <div className={`text-4xl font-bold text-gray-700 dark:text-gray-200 whitespace-pre-wrap transition-opacity duration-700 px-4 ${instructionOpacityClass}`}>
-                {status === 'recording' && instructionMessage}
+                {(status === 'recording' || status === 'instructions' || status === 'countdown') && instructionMessage}
               </div>
             )}
           </div>
@@ -1396,12 +1412,13 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
             filter: 'blur(50px)',
           };
 
+          const time = (performance.now() - startTimeRef.current);
           switch (positionType) {
             case 0: // Bottom
               dynamicStyle = {
                 ...dynamicStyle,
                 bottom: '-100px',
-                left: `calc(50% + ${Math.sin(performance.now() / (4000 + index * 500)) * 35}vw)`,
+                left: `calc(50% + ${Math.sin(time / (4000 + index * 500)) * 35}vw)`,
                 transform: `translate(-50%, 50%) scale(${scale})`,
               };
               break;
@@ -1409,7 +1426,7 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
               dynamicStyle = {
                 ...dynamicStyle,
                 left: '-100px',
-                top: `calc(50% + ${Math.cos(performance.now() / (4500 + index * 500)) * 35}vh)`,
+                top: `calc(50% + ${Math.cos(time / (4500 + index * 500)) * 35}vh)`,
                 transform: `translate(-50%, -50%) scale(${scale})`,
               };
               break;
@@ -1418,7 +1435,7 @@ const VocalRangeTestScreen: React.FC<VocalRangeTestScreenProps> = memo(({ onCanc
               dynamicStyle = {
                 ...dynamicStyle,
                 right: '-100px',
-                top: `calc(50% + ${Math.sin(performance.now() / (5000 + index * 500)) * 35}vh)`,
+                top: `calc(50% + ${Math.sin(time / (5000 + index * 500)) * 35}vh)`,
                 transform: `translate(50%, -50%) scale(${scale})`,
               };
               break;

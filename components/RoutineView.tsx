@@ -87,6 +87,9 @@ const RoutineCard: React.FC<{
                 {/* Front Face */}
                 <div
                     onClick={handleCardClick}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleCardClick(); }}
+                    role="button"
+                    tabIndex={0}
                     className={`select-none absolute w-full h-full p-6 flex flex-col justify-between bg-white/60 dark:bg-slate-800/30 backdrop-blur-2xl rounded-3xl shadow-lg border border-white/50 dark:border-slate-700/50 overflow-hidden ${isFlipped ? 'pointer-events-none' : ''}`}
                     style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
                 >
@@ -114,7 +117,7 @@ const RoutineCard: React.FC<{
                 </div>
 
                 {/* Back Face */}
-                <div className={`select-none absolute w-full h-full p-6 flex flex-col justify-between bg-white/80 dark:bg-slate-800/60 backdrop-blur-3xl rounded-3xl shadow-lg border border-white/50 dark:border-slate-700/50 overflow-hidden ${!isFlipped ? 'pointer-events-none' : ''}`} style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
+                <div onClick={(e) => { e.stopPropagation(); setIsFlipped(false); }} className={`select-none absolute w-full h-full p-6 cursor-pointer flex flex-col justify-between bg-white/80 dark:bg-slate-800/60 backdrop-blur-3xl rounded-3xl shadow-lg border border-white/50 dark:border-slate-700/50 overflow-hidden ${!isFlipped ? 'pointer-events-none' : ''}`} style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
                     <div className="flex-grow flex flex-col min-h-0">
                         <h4 className={`text-lg font-bold bg-clip-text text-transparent bg-gradient-to-br ${currentTheme.gradientText.from} ${currentTheme.gradientText.to} ${currentTheme.gradientText.darkFrom} ${currentTheme.gradientText.darkTo} mb-2`}>{t('benefits')}</h4>
                         <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">{t(routine.benefits)}</p>
@@ -143,6 +146,8 @@ const RoutineCard: React.FC<{
 const RoutineView: React.FC<RoutineViewProps> = ({ onStartRoutine, currentTheme, favoriteRoutineIds, onToggleFavorite }) => {
     const { t } = useTranslation();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [activeIndex, setActiveIndex] = useState(0);
+    const activeIndexRef = useRef(0);
 
     const handleArrowScroll = (direction: 'left' | 'right') => {
         const container = scrollContainerRef.current;
@@ -164,30 +169,47 @@ const RoutineView: React.FC<RoutineViewProps> = ({ onStartRoutine, currentTheme,
         const scrollCenter = container.scrollLeft + container.offsetWidth / 2;
         const cards = Array.from(container.children) as HTMLDivElement[];
 
-        cards.forEach((cardWrapper) => {
+        // Find closest card for dots (skipping spacers at set start/end)
+        let localMinDist = Infinity;
+        let localClosestIndex = 0;
+
+        cards.forEach((cardWrapper, index) => {
             const transformWrapper = cardWrapper.firstElementChild as HTMLDivElement;
-            if (!transformWrapper || !transformWrapper.firstElementChild) return; // Skip spacers
+            if (!transformWrapper || !transformWrapper.firstElementChild) return; // Skip spacers that don't have the inner structure
 
             const cardCenter = cardWrapper.offsetLeft + cardWrapper.offsetWidth / 2;
             const distance = scrollCenter - cardCenter;
+            const absDistance = Math.abs(distance);
+
+            if (absDistance < localMinDist) {
+                localMinDist = absDistance;
+                // Index 0 is spacer. Index 1 is first routine.
+                localClosestIndex = index - 1;
+            }
 
             const maxDistance = container.offsetWidth * 0.8; // Use container width as a reference for distance calculation
             const distanceRatio = Math.max(-1, Math.min(1, distance / maxDistance));
 
             // --- Animation Parameters ---
             const rotateY = -distanceRatio * 65;
-            const translateX = -distanceRatio * 40;
+            const translateX = distanceRatio * 70; // Pull cards in towards center
             const translateZ = -Math.abs(distanceRatio) * 120;
             const scale = 1 - Math.abs(distanceRatio) * 0.15;
-            const opacity = 1 - Math.pow(Math.abs(distanceRatio), 1.5);
+            const opacity = 1.0; // Always visible
             const zIndex = 100 - Math.abs(Math.round(distanceRatio * 100));
             const blur = Math.abs(distanceRatio) * 3;
 
             transformWrapper.style.transform = `translateX(${translateX}px) translateZ(${translateZ}px) rotateY(${rotateY}deg) scale(${scale})`;
             transformWrapper.style.opacity = `${opacity}`;
             transformWrapper.style.zIndex = `${zIndex}`;
-            transformWrapper.style.filter = `blur(${blur}px)`;
+            // transformWrapper.style.filter = `blur(${blur}px)`; // Blur can break 3D context on iOS
         });
+
+        // Update state only if changed to avoid re-renders during scroll
+        if (localClosestIndex >= 0 && localClosestIndex < ROUTINES.length && localClosestIndex !== activeIndexRef.current) {
+            activeIndexRef.current = localClosestIndex;
+            setActiveIndex(localClosestIndex);
+        }
     };
 
     useEffect(() => {
@@ -259,11 +281,7 @@ const RoutineView: React.FC<RoutineViewProps> = ({ onStartRoutine, currentTheme,
                 {ROUTINES.map((_, index) => (
                     <div
                         key={index}
-                        className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600"
-                        style={{
-                            opacity: index === 0 ? 1 : 0.4,
-                            transition: 'opacity 0.3s ease'
-                        }}
+                        className={`w-2 h-2 rounded-full transition-all duration-300 ${index === activeIndex ? 'bg-slate-800 dark:bg-slate-200 scale-125' : 'bg-slate-300 dark:bg-slate-600'}`}
                     />
                 ))}
             </div>

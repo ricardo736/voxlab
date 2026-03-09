@@ -3,17 +3,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Language, Theme, ActiveView } from '../types';
 import { LANGUAGES, THEMES } from '../constants';
 import { useTranslation } from '../hooks/useTranslation';
+import { useTheme } from '../context/ThemeContext';
 
 
 interface SettingsOverlayProps {
     setIsSettingsOpen: (isOpen: boolean) => void;
     setActiveView: (view: ActiveView) => void;
-    language: Language;
-    setLanguage: (lang: Language) => void;
-    activeTheme: Theme;
-    setThemeId: (id: string) => void;
-    themeMode: 'light' | 'dark';
-    setThemeMode: (mode: 'light' | 'dark') => void;
     onLoadSamples?: (files: FileList) => Promise<{ loaded: number; errors: number }> | void;
     loadedSampleCount?: number;
     availableInstruments?: string[];
@@ -29,17 +24,12 @@ interface SettingsOverlayProps {
     setPyinGateMode: (mode: 'smooth' | 'instant') => void;
     noiseGateThreshold: number;
     setNoiseGateThreshold: (threshold: number) => void;
+    onResetDefaults?: () => void;
 }
 
 const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
     setIsSettingsOpen,
     setActiveView,
-    language,
-    setLanguage,
-    activeTheme,
-    setThemeId,
-    themeMode,
-    setThemeMode,
     onLoadSamples,
     availableInstruments,
     activeInstrument,
@@ -53,9 +43,12 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
     pyinGateMode,
     setPyinGateMode,
     noiseGateThreshold,
-    setNoiseGateThreshold
+    setNoiseGateThreshold,
+    onResetDefaults
+
 }) => {
-    const { t } = useTranslation();
+    const { t, language, setLanguage } = useTranslation();
+    const { activeTheme, setThemeId, themeMode, setThemeMode } = useTheme();
     const [show, setShow] = useState(false);
     const [isLoadingSamples, setIsLoadingSamples] = useState(false);
     const [sampleStatus, setSampleStatus] = useState<string | null>(null);
@@ -205,7 +198,7 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
                                     onClick={() => setCompressorEnabled(!compressorEnabled)}
                                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${compressorEnabled ? 'bg-violet-500' : 'bg-slate-300 dark:bg-slate-600'}`}
                                 >
-                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${compressorEnabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${compressorEnabled ? 'translate-x-[18px]' : 'translate-x-1'}`} />
                                 </button>
                             </div>
 
@@ -219,7 +212,7 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
                                     onClick={() => setFrequencySeparationEnabled(!frequencySeparationEnabled)}
                                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${frequencySeparationEnabled ? 'bg-violet-500' : 'bg-slate-300 dark:bg-slate-600'}`}
                                 >
-                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${frequencySeparationEnabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${frequencySeparationEnabled ? 'translate-x-[18px]' : 'translate-x-1'}`} />
                                 </button>
                             </div>
 
@@ -326,10 +319,21 @@ const SettingsOverlay: React.FC<SettingsOverlayProps> = ({
                     </div>
 
                     {/* Version Info */}
-                    <div className="mt-2 text-center">
+                    <div className="mt-2 text-center flex flex-col items-center gap-2">
                         <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                             v0.9.0 Beta
                         </span>
+
+                        <button
+                            onClick={() => {
+                                if (confirm(t('confirmReset') || 'Reset all settings to default?')) {
+                                    onResetDefaults?.();
+                                }
+                            }}
+                            className="text-[10px] text-red-500 hover:text-red-600 underline decoration-red-500/30"
+                        >
+                            {t('resetDefaults') || 'Reset to Defaults'}
+                        </button>
                     </div>
                 </div>
             </div>

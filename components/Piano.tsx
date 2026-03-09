@@ -13,7 +13,9 @@ interface PianoProps {
 const Piano: React.FC<PianoProps> = ({ notes, onKeyClick, vocalRange, currentTheme }) => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const c4KeyRef = useRef<HTMLDivElement>(null);
-    const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+    // Use a Ref for mouse position to avoid re-rendering the entire Piano on every mouse move
+    const mousePosRef = useRef<{ x: number; y: number } | null>(null);
     const [scrollCenterOffset, setScrollCenterOffset] = useState(0);
     const [viewportWidth, setViewportWidth] = useState(0);
 
@@ -51,8 +53,14 @@ const Piano: React.FC<PianoProps> = ({ notes, onKeyClick, vocalRange, currentThe
         };
     }, []);
 
-    const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => setMousePos({ x: e.clientX, y: e.clientY }), []);
-    const handleMouseLeave = useCallback(() => setMousePos(null), []);
+    // Update the ref directly without triggering re-render
+    const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        mousePosRef.current = { x: e.clientX, y: e.clientY };
+    }, []);
+
+    const handleMouseLeave = useCallback(() => {
+        mousePosRef.current = null;
+    }, []);
 
     const handleArrowScroll = useCallback((direction: 'left' | 'right') => {
         const container = scrollContainerRef.current;
@@ -126,7 +134,7 @@ const Piano: React.FC<PianoProps> = ({ notes, onKeyClick, vocalRange, currentThe
                                         onClick={onKeyClick}
                                         isSelected={isSelected}
                                         isInRange={!!isInRange}
-                                        mousePos={mousePos}
+                                        mousePosRef={mousePosRef} // Pass Ref instead of value
                                         centerProximity={centerProximity}
                                         style={{
                                             left: `${leftPosition}px`,

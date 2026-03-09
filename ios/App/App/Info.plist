@@ -43,6 +43,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VoxLab needs access to your microphone to analyze your vocal range and provide feedback during exercises.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>VoxLab needs access to your camera to scan QR codes and provide visual feedback.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

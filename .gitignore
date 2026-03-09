@@ -28,3 +28,12 @@ dist-ssr
 
 # Backups (large files)
 backups/
+
+# Build outputs
+dist_prod/
+
+# User data
+users feedback/
+
+# Claude internal
+.claude/

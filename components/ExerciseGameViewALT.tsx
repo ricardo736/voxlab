@@ -204,11 +204,19 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
 
 
 
-    // Note: vocalRange.start.semitone is relative to C4 (semitone 0 = C4 = MIDI 60)
-    // E3 = -9 semitones = MIDI 60 + (-9) = MIDI 51
+    // Note: vocalRange can satisfy VocalRange interface { min, max } OR legacy { start: { semitone }, end: ... }
+    const getStartMidiFromRange = (range: any) => {
+        if (range.min !== undefined) return range.min;
+        if (range.start?.semitone !== undefined) {
+            const s = range.start.semitone;
+            // If small relative value, add 60 (C4). If absolute MIDI (>36), use as is.
+            return Math.abs(s) < 36 ? 60 + s : s;
+        }
+        return 48; // Default fallback C3
+    };
+
     const [currentKeyMidi, setCurrentKeyMidi] = useState(() => {
-        const semitone = vocalRange.start?.semitone ?? -9; // Default E3
-        return 60 + semitone; // Convert to MIDI
+        return getStartMidiFromRange(vocalRange);
     });
 
     // Game Logic Refs
@@ -220,13 +228,9 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
 
     // Fix: Update currentKeyMidi when vocalRange changes to ensure camera starts at correct position
     useEffect(() => {
-        const semitone = vocalRange.start?.semitone ?? -9;
-        // Convert relative semitone to absolute MIDI (same logic as initial state)
-        // If semitone is small (relative), add 60. If large (absolute), use as is.
-        // vocalRange.start.semitone is usually relative to C4 (0).
-        const midi = Math.abs(semitone) < 36 ? 60 + semitone : semitone;
+        const midi = getStartMidiFromRange(vocalRange);
         setCurrentKeyMidi(midi);
-    }, [vocalRange.start?.semitone]);
+    }, [vocalRange]);
 
     // Visual Effects Refs
     interface Particle {
@@ -258,11 +262,24 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
 
     // Initialize camera based on vocal range - memoized to prevent infinite loops
     const initialCameraRange = useMemo(() => {
-        // Fix: Convert relative semitone (relative to C4) to absolute MIDI
-        // vocalRange.start.semitone is relative to C4 (semitone 0 = C4 = MIDI 60)
-        // E.g., -9 = E3 = MIDI 51, so we need: 60 + semitone
-        let startMidi = vocalRange.start?.semitone != null ? 60 + vocalRange.start.semitone : 48;
-        let endMidi = vocalRange.end?.semitone != null ? 60 + vocalRange.end.semitone : 72;
+        // Fix: Support both min/max and legacy start.semitone
+        let startMidi = 48; // Default
+        let endMidi = 72;   // Default
+
+        if ((vocalRange as any).min !== undefined) {
+            startMidi = (vocalRange as any).min;
+            endMidi = (vocalRange as any).max;
+        } else if (vocalRange.start?.semitone !== undefined) {
+            const s = vocalRange.start.semitone;
+            startMidi = Math.abs(s) < 36 ? 60 + s : s;
+
+            if (vocalRange.end?.semitone !== undefined) {
+                const e = vocalRange.end.semitone;
+                endMidi = Math.abs(e) < 36 ? 60 + e : e;
+            } else {
+                endMidi = startMidi + 24;
+            }
+        }
 
 
         // Check if values are valid (reasonable MIDI range)
@@ -286,7 +303,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
             minF: centerFreq / freqRatio,
             maxF: centerFreq * freqRatio
         };
-    }, [vocalRange.start?.semitone, vocalRange.end?.semitone, visibleOctaves]); // Only recalculate when these change
+    }, [vocalRange, visibleOctaves]); // Rely on vocalRange object change
 
     const cameraRef = useRef<{ minF: number; maxF: number }>(initialCameraRange);
     const startTimeRef = useRef<number>(0);
@@ -886,11 +903,17 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
         const secondsPerBeat = 60 / bpm;
         const beatDur = secondsPerBeat / localParams.tempoMultiplier;
 
-        // Sanitize the vocal range
-        const { start: startKey, end: endKey } = sanitizeMidiRange(
-            vocalRange.start?.semitone,
-            vocalRange.end?.semitone
-        );
+        // Sanitize and determine start key
+        let startKey = 48;
+        if ((vocalRange as any).min !== undefined) {
+            startKey = (vocalRange as any).min;
+        } else if (vocalRange.start?.semitone !== undefined) {
+            const s = vocalRange.start.semitone;
+            startKey = Math.abs(s) < 36 ? 60 + s : s;
+        }
+
+        // Validate bounds
+        if (startKey < 36 || startKey > 84) startKey = 48;
 
 
         setCurrentKeyMidi(startKey);
@@ -1303,7 +1326,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                         gradient.addColorStop(1, `rgba(217, 70, 239, ${previewAlpha})`);  // fuchsia-500
                         ctx.fillStyle = gradient;
 
-                        ctx.fillText('PRÉVIA', width / 2, 120);
+                        ctx.fillText(t('preview').toUpperCase(), width / 2, 220);
                         ctx.restore();
                     }
                 }
@@ -1659,7 +1682,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
 
             {/* Top Left - Routine Info */}
             {currentRoutine && (
-                <div className="absolute top-2 left-2 md:top-4 md:left-4 z-50">
+                <div className="absolute left-2 md:left-4 z-50" style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}>
                     <div className="bg-white/40 backdrop-blur-xl border border-slate-200/50 rounded-2xl p-2 md:p-3 shadow-xl">
                         <div className="flex flex-col gap-0.5">
                             <div className="text-[9px] md:text-[10px] font-mono text-slate-500 uppercase tracking-widest">
@@ -1688,7 +1711,8 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                         onToggleFavoriteExercise(getExerciseId(exercise));
                     }
                 }}
-                className="absolute top-3 right-3 md:top-5 md:right-5 z-50 p-2 transition-all btn-interactive hover:scale-110 active:scale-95"
+                className="absolute right-3 md:right-5 z-50 p-2 transition-all btn-interactive hover:scale-110 active:scale-95"
+                style={{ top: 'max(0.75rem, env(safe-area-inset-top))' }}
                 title={currentRoutine ? "Favorite Routine" : "Favorite Exercise"}
             >
                 <Star
@@ -1746,7 +1770,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                 </div>
             )}
 
-            <div className="flex-grow relative min-h-0" ref={containerRef}>
+            <div className="flex-grow relative min-h-0 absolute inset-0" ref={containerRef}>
                 <canvas
                     ref={canvasRef}
                     width={dimensions.width}
@@ -1762,7 +1786,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
 
                 {/* Top Left - Routine Info */}
                 {currentRoutine && (
-                    <div className="absolute top-2 left-2 md:top-4 md:left-4 z-50">
+                    <div className="absolute left-2 md:left-4 z-50" style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}>
                         <div className="bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl border border-slate-200/50 dark:border-slate-600/50 rounded-2xl p-2 md:p-3 shadow-xl">
                             <div className="flex flex-col gap-0.5">
                                 <div className="text-[9px] md:text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-widest">
@@ -1791,7 +1815,8 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                             onToggleFavoriteExercise(getExerciseId(exercise));
                         }
                     }}
-                    className="absolute top-3 right-3 md:top-5 md:right-5 z-50 p-2 transition-all btn-interactive hover:scale-110 active:scale-95"
+                    className="absolute right-3 md:right-5 z-50 p-2 transition-all btn-interactive hover:scale-110 active:scale-95"
+                    style={{ top: 'max(0.75rem, env(safe-area-inset-top))' }}
                     title={currentRoutine ? "Favorite Routine" : "Favorite Exercise"}
                 >
                     <Star
@@ -1805,25 +1830,25 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                 </button>
 
                 {/* Bottom Controls - Always visible with blur background */}
-                <div className="absolute left-0 right-0 z-50" style={{ bottom: 0 }}>
+                <div className="fixed left-0 right-0 z-50 flex justify-center pointer-events-none" style={{ bottom: 'calc(2.25rem + env(safe-area-inset-bottom))' }}>
                     <div className={`w-full p-3 md:p-6 flex items-end justify-center pointer-events-auto transition-opacity duration-300`}>
                         {/* Center Main Controls - Grouped Together */}
                         <div className="flex items-center gap-2 md:gap-3">
                             {/* Back Button */}
                             <button
                                 onClick={onBack || onStop}
-                                className={`w-8 h-8 md:w-10 md:h-10 rounded-full ${isPlaying ? 'bg-white/40 backdrop-blur-md border border-white/50 text-slate-700' : 'bg-gradient-to-br from-yellow-400 to-yellow-500 border-2 border-yellow-300 text-slate-900'} flex items-center justify-center shadow-lg hover:scale-105 transition-all duration-300 ease-out btn-interactive`}
+                                className={`w-16 h-16 rounded-full ${isPlaying ? 'bg-white/40 backdrop-blur-md border border-white/50 text-slate-700' : 'bg-gradient-to-br from-yellow-400 to-yellow-500 border-2 border-yellow-300 text-slate-900'} flex items-center justify-center shadow-lg hover:scale-105 transition-all duration-300 ease-out btn-interactive`}
                             >
-                                <ChevronLeft size={20} strokeWidth={3} />
+                                <ChevronLeft size={28} strokeWidth={3} />
                             </button>
 
                             {/* Edit/Refine Button - Only for AI exercises */}
                             {exercise.isAIGenerated && (
                                 <button
                                     onClick={() => setShowRefineInput(!showRefineInput)}
-                                    className={`w-8 h-8 md:w-10 md:h-10 rounded-full ${showRefineInput ? 'bg-gradient-to-br from-violet-600 to-violet-700 border-2 border-violet-400 text-white' : isPlaying ? 'bg-white/40 backdrop-blur-md border border-white/50 text-slate-700' : 'bg-gradient-to-br from-violet-400 to-violet-500 border-2 border-violet-300 text-white'} flex items-center justify-center shadow-lg hover:scale-105 transition-all duration-300 ease-out btn-interactive`}
+                                    className={`w-16 h-16 rounded-full ${showRefineInput ? 'bg-gradient-to-br from-violet-600 to-violet-700 border-2 border-violet-400 text-white' : isPlaying ? 'bg-white/40 backdrop-blur-md border border-white/50 text-slate-700' : 'bg-gradient-to-br from-violet-400 to-violet-500 border-2 border-violet-300 text-white'} flex items-center justify-center shadow-lg hover:scale-105 transition-all duration-300 ease-out btn-interactive`}
                                 >
-                                    <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                     </svg>
                                 </button>
@@ -1832,7 +1857,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                             {/* Play/Pause Button - Staggered animation delay 100ms */}
                             <button
                                 onClick={onPlayPause}
-                                className={`w-12 h-12 md:w-14 md:h-14 rounded-full group transition-all duration-300 ease-out transform hover:scale-105 active:scale-95 text-white shadow-xl overflow-hidden opacity-100`}
+                                className={`w-24 h-24 rounded-full group transition-all duration-300 ease-out transform hover:scale-105 active:scale-95 text-white shadow-xl overflow-hidden opacity-100`}
                                 style={{
                                     backgroundImage: `linear-gradient(to bottom right, #8b5cf6, #d946ef, #facc15)`,
                                     boxShadow: `0 8px 32px rgba(217, 70, 239, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)`,
@@ -1845,8 +1870,8 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                                 </div>
                                 <div className="relative z-10 flex items-center justify-center h-full w-full">
                                     {isPlaying
-                                        ? <Pause size={28} fill="currentColor" />
-                                        : <Play size={28} fill="currentColor" className="ml-1" />}
+                                        ? <Pause size={42} fill="currentColor" />
+                                        : <Play size={42} fill="currentColor" className="ml-1" />}
                                 </div>
                             </button>
 
@@ -1857,31 +1882,15 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
                                     onClick={() => {
                                         props.onRestart!();
                                     }}
-                                    className={`w-10 h-10 md:w-12 md:h-12 rounded-full ${isPlaying ? 'bg-white/40 backdrop-blur-md border border-white/50 text-slate-700' : 'bg-white/60 backdrop-blur-md border border-slate-200/50 text-slate-800'} flex items-center justify-center shadow-xl hover:scale-105 transition-all duration-300 ease-out btn-interactive`}
+                                    className={`w-16 h-16 rounded-full ${isPlaying ? 'bg-white/40 backdrop-blur-md border border-white/50 text-slate-700' : 'bg-white/60 backdrop-blur-md border border-slate-200/50 text-slate-800'} flex items-center justify-center shadow-xl hover:scale-105 transition-all duration-300 ease-out btn-interactive`}
                                 >
-                                    <RotateCcw size={20} />
+                                    <RotateCcw size={28} />
                                 </button>
                             )}
-
-                            {/* Fullscreen/Immersive Mode Button */}
-                            <button
-                                onClick={props.onToggleFullscreen}
-                                className={`w-8 h-8 md:w-10 md:h-10 rounded-full ${isPlaying ? 'bg-white/40 backdrop-blur-md border border-white/50 text-slate-700' : 'bg-white/60 backdrop-blur-md border border-slate-200/50 text-slate-800'} flex items-center justify-center shadow-lg hover:scale-105 transition-all duration-300 ease-out btn-interactive`}
-                                title={props.isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                            >
-                                {props.isFullscreen ? (
-                                    <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 4H4v4m12 4h4v-4M8 20H4v-4m12 4h4v-4" />
-                                    </svg>
-                                ) : (
-                                    <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4m12 4V4h-4M4 16v4h4m12-4v4h-4" />
-                                    </svg>
-                                )}
-                            </button>
                         </div>
                     </div>
                 </div>
+
 
                 {/* Settings Popup */}
                 {

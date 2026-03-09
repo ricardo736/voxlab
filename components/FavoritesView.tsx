@@ -195,7 +195,7 @@ const FavoritesView: React.FC<FavoritesViewProps> = ({
     const totalFavorites = favoriteRoutines.length + favoriteExercises.length;
 
     return (
-        <section className="flex-grow flex flex-col items-center justify-start pt-8 w-full -mt-24 md:mt-0">
+        <section className="flex-grow flex flex-col items-center justify-start pt-8 w-full -mt-16 md:mt-0">
             <div className="w-full space-y-6">
                 {/* Summary */}
                 {totalFavorites > 0 && (

@@ -1,6 +1,6 @@
 require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
-platform :ios, '14.0'
+platform :ios, '15.0'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires
@@ -21,4 +21,13 @@ end
 
 post_install do |installer|
   assertDeploymentTarget(installer)
+  
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Fix for "double-quoted include in framework header"
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+      # Fix for "module 'Cordova' not found" and other strict module verifier errors
+      config.build_settings['ENABLE_MODULE_VERIFIER'] = 'NO'
+    end
+  end
 end

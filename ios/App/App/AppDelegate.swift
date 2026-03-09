@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import AVFoundation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,6 +8,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Configure Audio Session
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
+            try audioSession.setActive(true)
+            print("✅ Audio Session Configured: PlayAndRecord + DefaultToSpeaker")
+        } catch {
+            print("❌ Failed to configure Audio Session: \(error.localizedDescription)")
+        }
+
         // Override point for customization after application launch.
         return true
     }
@@ -27,6 +38,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        
+        // Re-configure Audio Session on resume to ensure we have focus and correct routing
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
+            try audioSession.setActive(true)
+            print("✅ Audio Session Re-Configured on Resume")
+        } catch {
+            print("❌ Failed to re-configure Audio Session on resume: \(error.localizedDescription)")
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
