@@ -59,18 +59,22 @@ const PaywallView: React.FC<PaywallViewProps> = ({ currentTheme, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in-scale">
-            <div className="relative w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-slide-up">
+        <div className="fixed inset-0 z-50 flex flex-col sm:flex-row sm:items-center sm:justify-center sm:bg-black/60 sm:backdrop-blur-sm animate-fade-in-scale">
+            <div className="relative w-full h-full sm:h-auto sm:max-w-md bg-white dark:bg-slate-900 sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up">
                 {/* Close button */}
                 <button
                     onClick={onClose}
-                    className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors z-10"
+                    className="absolute right-4 p-2 rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-colors z-10"
+                    style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
                 >
                     <X className="w-5 h-5" />
                 </button>
 
                 {/* Header */}
-                <div className={`px-6 pt-8 pb-6 bg-gradient-to-br ${currentTheme.button.from} ${currentTheme.button.to} text-white`}>
+                <div
+                    className={`px-6 pb-6 bg-gradient-to-br ${currentTheme.button.from} ${currentTheme.button.to} text-white flex-shrink-0`}
+                    style={{ paddingTop: 'max(2rem, env(safe-area-inset-top))' }}
+                >
                     <div className="text-center">
                         <p className="text-white/80 text-sm font-medium uppercase tracking-widest mb-1">VoxLab Pro</p>
                         <h2 className="text-2xl font-black mb-2">Unlock Your Full Potential</h2>
@@ -78,7 +82,7 @@ const PaywallView: React.FC<PaywallViewProps> = ({ currentTheme, onClose }) => {
                     </div>
                 </div>
 
-                <div className="px-6 py-5">
+                <div className="px-6 py-5 flex-1 overflow-y-auto" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
                     {/* Feature comparison */}
                     <div className="space-y-2 mb-6">
                         {features.map((f, i) => (
@@ -147,7 +151,7 @@ const PaywallView: React.FC<PaywallViewProps> = ({ currentTheme, onClose }) => {
                             Restore Purchases
                         </button>
                     </div>
-                    <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3 leading-relaxed">
+                    <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3 mb-2 leading-relaxed">
                         Subscriptions auto-renew. Cancel anytime in your App Store settings.
                     </p>
                 </div>

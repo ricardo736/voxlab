@@ -77,7 +77,7 @@ const FloatingMenu: React.FC<FloatingMenuProps> = ({ activeView, setActiveView, 
     const glassBg = `bg-white/50 dark:bg-slate-900/50 backdrop-blur-lg shadow-[0_12px_30px_-12px_rgba(0,0,0,0.2),inset_-1px_1px_8px_rgba(0,0,0,0.08),inset_2px_-2px_4px_rgba(255,255,255,0.5)] dark:shadow-[0_12px_30px_-12px_rgba(0,0,0,0.5),inset_-1px_1px_8px_rgba(255,255,255,0.08),inset_2px_-2px_4px_rgba(0,0,0,0.5)] border border-slate-300/60 dark:border-slate-700/60`;
 
     return (
-        <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg md:max-w-3xl flex items-center gap-2 z-50 transition-all duration-500 ease-in-out ${isCompact ? 'h-14' : 'h-16'} ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0 pointer-events-none'}`}>
+        <div className={`fixed left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg md:max-w-3xl flex items-center gap-2 z-50 transition-all duration-500 ease-in-out ${isCompact ? 'h-14' : 'h-16'} ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0 pointer-events-none'}`} style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
             <nav
                 className={`flex-grow h-full rounded-full min-w-0 relative ${glassBg}`}
             >

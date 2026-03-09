@@ -198,7 +198,7 @@ Blues Scale with Rest:
 
         } catch (e) {
             console.error("Error calling Gemini API:", e);
-            setError('An error occurred while generating the exercise. Please try again.');
+            setError(t('aiGenerateError'));
         } finally {
             setIsLoading(false);
         }
@@ -266,7 +266,7 @@ Blues Scale with Rest:
 
         } catch (e) {
             console.error("Error calling Gemini API:", e);
-            setError('An error occurred while refining the exercise. Please try again.');
+            setError(t('aiRefineError'));
         } finally {
             setIsRefineLoading(false);
         }
@@ -379,37 +379,37 @@ Blues Scale with Rest:
                                 </div>
                                 <div className="border-t border-slate-200/80 dark:border-slate-700/80 my-2"></div>
                                 <div>
-                                    <h4 className="font-semibold text-violet-700 dark:text-violet-400">Instructions</h4>
+                                    <h4 className="font-semibold text-violet-700 dark:text-violet-400">{t('instructionsHeader')}</h4>
                                     <p className="text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{result.instructions}</p>
                                 </div>
                                 <div>
                                     <h4 className="font-semibold text-violet-700 dark:text-violet-400">
-                                        {(result as any).notes ? 'Notes' : 'Pattern'}
+                                        {(result as any).notes ? t('notesHeader') : t('patternHeader')}
                                     </h4>
                                     <p className="font-mono text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/50 rounded p-2">
                                         {(result as any).notes
-                                            ? `${(result as any).notes.length} notes`
-                                            : result.pattern?.join(', ') || 'No pattern defined'}
+                                            ? t('notesCount').replace('{count}', String((result as any).notes.length))
+                                            : result.pattern?.join(', ') || t('noPatternDefined')}
                                     </p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     {result.duration && (
                                         <div>
-                                            <h4 className="font-semibold text-violet-700 dark:text-violet-400">Note Duration</h4>
+                                            <h4 className="font-semibold text-violet-700 dark:text-violet-400">{t('noteDuration')}</h4>
                                             <p className="text-slate-600 dark:text-slate-300">
                                                 <span className="text-2xl mr-2">{beatsToMusicalNotation(result.duration).symbol}</span>
                                                 {beatsToMusicalNotation(result.duration).notation}
                                             </p>
-                                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">({result.duration} beats)</p>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">({result.duration} {t('beatsUnit')})</p>
                                         </div>
                                     )}
                                     <div>
-                                        <h4 className="font-semibold text-violet-700 dark:text-violet-400">Tempo</h4>
+                                        <h4 className="font-semibold text-violet-700 dark:text-violet-400">{t('tempoHeader')}</h4>
                                         <p className="text-slate-600 dark:text-slate-300">
                                             <span className="text-2xl mr-2">♩</span>
                                             {(result as any).tempo_bpm || result.bpm || 90} BPM
                                         </p>
-                                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Beats per minute</p>
+                                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t('beatsPerMinute')}</p>
                                     </div>
                                 </div>
                                 <div className="border-t border-slate-200/80 dark:border-slate-700/80 my-2"></div>
@@ -474,7 +474,7 @@ Blues Scale with Rest:
                                         className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 transition-all text-sm font-semibold cursor-pointer select-none"
                                     >
                                         {isPreviewing ? <Square size={16} /> : <Play size={16} />}
-                                        {isPreviewing ? 'Stop Preview' : 'Preview'}
+                                        {isPreviewing ? t('stopPreviewFull') : t('preview')}
                                     </button>
                                     <ThemedButton
                                         onClick={() => onStartExercise(result)}

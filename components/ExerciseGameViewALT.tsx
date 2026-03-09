@@ -1806,7 +1806,7 @@ export default function ExerciseGameViewALT(props: ExerciseGameViewALTProps) {
 
                 {/* Bottom Controls - Always visible with blur background */}
                 <div className="absolute left-0 right-0 z-50" style={{ bottom: 0 }}>
-                    <div className={`w-full p-3 md:p-6 flex items-end justify-center pointer-events-auto transition-opacity duration-300`}>
+                    <div className={`w-full p-3 md:p-6 flex items-end justify-center pointer-events-auto transition-opacity duration-300`} style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
                         {/* Center Main Controls - Grouped Together */}
                         <div className="flex items-center gap-2 md:gap-3">
                             {/* Back Button */}

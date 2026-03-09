@@ -461,8 +461,7 @@ const NORMALIZE_REGEX = /[_.-]/g;
 const SHARP_REGEX = /sharp/gi;
 const FLAT_REGEX = /flat/gi;
 
-// Beta Mode Feature Flag - Only show beta features when this is true
-const IS_BETA_MODE = false;
+const titleMap: Record<string, TranslationKey> = { home: 'VoxLab' as TranslationKey, range: 'vocalRangeTitle', routines: 'routinesTitle', exercises: 'exercisesTitle', favorites: 'favorites', pitch: 'livePitchDetector', voxlabai: 'voxlabaiTitle', instrumentTuner: 'instrumentTuner', studies: 'studiesTitle', tokens: 'tokensTitle' };
 
 export default function App() {
 
@@ -519,6 +518,9 @@ export default function App() {
     const [aiResult, setAiResult] = useState<Exercise | null>(null); // Persist AI result
     const [favoriteExerciseIds, setFavoriteExerciseIds] = useState<string[]>([]);
     const [favoriteRoutineIds, setFavoriteRoutineIds] = useState<string[]>([]);
+
+    const favoriteExerciseIdSet = useMemo(() => new Set(favoriteExerciseIds), [favoriteExerciseIds]);
+    const favoriteRoutineIdSet = useMemo(() => new Set(favoriteRoutineIds), [favoriteRoutineIds]);
 
     const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -613,24 +615,6 @@ export default function App() {
     }, [themeMode]);
 
     useEffect(() => {
-        const handleFullscreenChange = () => {
-            const docEl = document.documentElement as any;
-            setIsFullscreen(!!(document.fullscreenElement || docEl.webkitFullscreenElement));
-        };
-
-        // Listen to both standard and webkit fullscreen events
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-        };
-    }, []);
-
-
-
-    useEffect(() => {
         const load = (k: string, s: (v: any) => void, d: any) => {
             try {
                 const v = localStorage.getItem(k);
@@ -674,57 +658,30 @@ export default function App() {
         load('favoriteRoutineIds', setFavoriteRoutineIds, []);
     }, []);
 
+    // Persist UI preferences
     useEffect(() => {
         localStorage.setItem('language', JSON.stringify(language));
-    }, [language]);
-
-    useEffect(() => {
         localStorage.setItem('themeId', JSON.stringify(themeId));
-    }, [themeId]);
-
-    useEffect(() => {
         localStorage.setItem('themeMode', JSON.stringify(themeMode));
-    }, [themeMode]);
+    }, [language, themeId, themeMode]);
 
+    // Persist audio settings
     useEffect(() => {
         localStorage.setItem('vocalRange', JSON.stringify(vocalRange));
-    }, [vocalRange]);
-
-    useEffect(() => {
         localStorage.setItem('micGain', JSON.stringify(micGain));
-    }, [micGain]);
-
-    useEffect(() => {
         localStorage.setItem('compressorEnabled', JSON.stringify(compressorEnabled));
-    }, [compressorEnabled]);
-
-    useEffect(() => {
         localStorage.setItem('frequencySeparationEnabled', JSON.stringify(frequencySeparationEnabled));
-    }, [frequencySeparationEnabled]);
-
-    useEffect(() => {
         localStorage.setItem('pyinBias', JSON.stringify(pyinBias));
-    }, [pyinBias]);
-
-    useEffect(() => {
         localStorage.setItem('pyinTolerance', JSON.stringify(pyinTolerance));
-    }, [pyinTolerance]);
-
-    useEffect(() => {
         localStorage.setItem('pyinGateMode', JSON.stringify(pyinGateMode));
-    }, [pyinGateMode]);
-
-    useEffect(() => {
         localStorage.setItem('noiseGateThreshold', JSON.stringify(noiseGateThreshold));
-    }, [noiseGateThreshold]);
+    }, [vocalRange, micGain, compressorEnabled, frequencySeparationEnabled, pyinBias, pyinTolerance, pyinGateMode, noiseGateThreshold]);
 
+    // Persist favorites
     useEffect(() => {
         localStorage.setItem('favoriteExerciseIds', JSON.stringify(favoriteExerciseIds));
-    }, [favoriteExerciseIds]);
-
-    useEffect(() => {
         localStorage.setItem('favoriteRoutineIds', JSON.stringify(favoriteRoutineIds));
-    }, [favoriteRoutineIds]);
+    }, [favoriteExerciseIds, favoriteRoutineIds]);
 
 
     useEffect(() => {
@@ -1024,21 +981,28 @@ export default function App() {
             instrumentLibraryRef.current['Piano'] = new Map();
         }
 
-        for (const sample of pianoSamples) {
+        const results = await Promise.all(pianoSamples.map(async (sample) => {
             try {
                 const response = await fetch(`/sounds/Salamander_Piano/${sample.filename}`);
                 if (response.ok) {
                     const arrayBuffer = await response.arrayBuffer();
-                    const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
-
-                    instrumentLibraryRef.current['Piano'].set(sample.semitone, audioBuffer);
-                    loadedCount++;
+                    const audioBuffer = await audioCtxRef.current!.decodeAudioData(arrayBuffer);
+                    return { sample, audioBuffer, ok: true as const };
                 } else {
                     console.warn(`Failed to load ${sample.filename}: ${response.status}`);
-                    errors++;
+                    return { sample, ok: false as const };
                 }
             } catch (e) {
                 console.error(`Error loading ${sample.filename}:`, e);
+                return { sample, ok: false as const };
+            }
+        }));
+
+        for (const result of results) {
+            if (result.ok) {
+                instrumentLibraryRef.current['Piano'].set(result.sample.semitone, result.audioBuffer);
+                loadedCount++;
+            } else {
                 errors++;
             }
         }
@@ -1145,14 +1109,18 @@ export default function App() {
             const nodes: NoteNodes = { oscillators: [], gainNodes: [sampleGain], allNodes: [source, sampleGain] };
 
             // FREQUENCY SEPARATION: Low-pass filter for piano output (warm, bass-heavy sound)
+            // Triple cascade for -36dB/oct rolloff — aggressive cutoff for mobile speaker isolation
             if (frequencySeparationEnabled) {
-                const lowPassFilter = audioCtx.createBiquadFilter();
-                lowPassFilter.type = 'lowpass';
-                lowPassFilter.frequency.value = 900; // Piano plays only below 900Hz
-                lowPassFilter.Q.value = 1.0; // Sharp cutoff
-                sampleGain.connect(lowPassFilter);
-                lowPassFilter.connect(masterGain);
-                nodes.allNodes.push(lowPassFilter);
+                const lpFilters = Array.from({ length: 3 }, () => {
+                    const f = audioCtx.createBiquadFilter();
+                    f.type = 'lowpass'; f.frequency.value = 600; f.Q.value = 0.7;
+                    return f;
+                });
+                sampleGain.connect(lpFilters[0]);
+                lpFilters[0].connect(lpFilters[1]);
+                lpFilters[1].connect(lpFilters[2]);
+                lpFilters[2].connect(masterGain);
+                nodes.allNodes.push(...lpFilters);
             } else {
                 sampleGain.connect(masterGain);
             }
@@ -1183,14 +1151,18 @@ export default function App() {
             const nodes: NoteNodes = { oscillators: [], gainNodes: [mainGainNode], allNodes: [mainGainNode] };
 
             // FREQUENCY SEPARATION: Low-pass filter for synthesized piano
+            // Triple cascade for -36dB/oct rolloff
             if (frequencySeparationEnabled) {
-                const lowPassFilter = audioCtx.createBiquadFilter();
-                lowPassFilter.type = 'lowpass';
-                lowPassFilter.frequency.value = 900; // Piano plays only below 900Hz
-                lowPassFilter.Q.value = 1.0;
-                mainGainNode.connect(lowPassFilter);
-                lowPassFilter.connect(masterGain);
-                nodes.allNodes.push(lowPassFilter);
+                const lpFilters = Array.from({ length: 3 }, () => {
+                    const f = audioCtx.createBiquadFilter();
+                    f.type = 'lowpass'; f.frequency.value = 600; f.Q.value = 0.7;
+                    return f;
+                });
+                mainGainNode.connect(lpFilters[0]);
+                lpFilters[0].connect(lpFilters[1]);
+                lpFilters[1].connect(lpFilters[2]);
+                lpFilters[2].connect(masterGain);
+                nodes.allNodes.push(...lpFilters);
             } else {
                 mainGainNode.connect(masterGain);
             }
@@ -1314,14 +1286,18 @@ export default function App() {
             workletNodeRef.current = workletNode;
 
             // FREQUENCY SEPARATION: High-pass filter - App deaf to piano frequencies
+            // Triple cascade for -36dB/oct rolloff — blocks speaker bleed on mobile
             let micInputNode: AudioNode = source;
             if (frequencySeparationEnabled) {
-                const highPassFilter = audioCtx.createBiquadFilter();
-                highPassFilter.type = 'highpass';
-                highPassFilter.frequency.value = 950; // App deaf below 950Hz
-                highPassFilter.Q.value = 1.0;
-                source.connect(highPassFilter);
-                micInputNode = highPassFilter;
+                const hpFilters = Array.from({ length: 3 }, () => {
+                    const f = audioCtx.createBiquadFilter();
+                    f.type = 'highpass'; f.frequency.value = 1200; f.Q.value = 0.7;
+                    return f;
+                });
+                source.connect(hpFilters[0]);
+                hpFilters[0].connect(hpFilters[1]);
+                hpFilters[1].connect(hpFilters[2]);
+                micInputNode = hpFilters[2];
             }
 
             // Connect to pitch detector
@@ -1392,22 +1368,6 @@ export default function App() {
     }, []);
 
     useEffect(() => () => stopPitchDetection(), [stopPitchDetection]);
-
-    // AUTO-START DISABLED - User must manually click mic button
-    // useEffect(() => {
-    //     const autoStart = async () => {
-    //         console.log('🔍 Auto-start check:', { activeView, uiView, micActive });
-    //         if (((activeView === 'pitch' || activeView === 'instrumentTuner') || uiView === 'exercise') && !micActive) {
-    //             console.log('🎤 Auto-starting microphone...');
-    //             await startPitchDetection();
-    //         } else if (micActive) {
-    //             console.log('✅ Microphone already active');
-    //         } else {
-    //             console.log('⏸️  No auto-start needed for current view');
-    //         }
-    //     };
-    //     autoStart();
-    // }, [activeView, uiView, micActive, startPitchDetection]);
 
     const handleMicToggle = useCallback(() => {
 
@@ -1845,7 +1805,9 @@ export default function App() {
     }, [userPitch, activeView, uiView, autoFitEnabled]);
 
     useEffect(() => {
-        const animId = requestAnimationFrame(animateView);
+        if (!autoFitEnabled && !needsCameraSnapRef.current) return;
+
+        let animId: number;
         function animateView() {
             let finalTargetCenter = viewControlTargetsRef.current.center;
             let finalTargetOctaves = viewControlTargetsRef.current.octaves;
@@ -1855,19 +1817,21 @@ export default function App() {
                 setVisibleOctaves(finalTargetOctaves);
                 needsCameraSnapRef.current = false;
                 setAutoFitTarget(null);
-            } else {
-                if (autoFitEnabled && autoFitTarget !== null) {
-                    if (uiView === 'exercise' && exerciseNoteCenter !== null) {
-                        finalTargetCenter = exerciseNoteCenter;
-                    } else {
-                        finalTargetCenter = autoFitTarget;
-                    }
-                }
-                setCenterSemitone(p => lerp(p, finalTargetCenter, 0.25)); // 25% = faster centering
-                setVisibleOctaves(p => lerp(p, finalTargetOctaves, 0.03));
+                return; // snap done, stop loop
             }
-            requestAnimationFrame(animateView);
+
+            if (autoFitEnabled && autoFitTarget !== null) {
+                if (uiView === 'exercise' && exerciseNoteCenter !== null) {
+                    finalTargetCenter = exerciseNoteCenter;
+                } else {
+                    finalTargetCenter = autoFitTarget;
+                }
+            }
+            setCenterSemitone(p => lerp(p, finalTargetCenter, 0.25));
+            setVisibleOctaves(p => lerp(p, finalTargetOctaves, 0.03));
+            animId = requestAnimationFrame(animateView);
         }
+        animId = requestAnimationFrame(animateView);
         return () => cancelAnimationFrame(animId);
     }, [autoFitEnabled, autoFitTarget, uiView, exerciseNoteCenter]);
 
@@ -1910,7 +1874,6 @@ export default function App() {
         setActiveView(view);
     }, [uiView, isRangeTestActive, handleCancelRangeTest, handleStop]);
 
-    const titleMap: Record<string, TranslationKey> = { home: 'VoxLab' as TranslationKey, range: 'vocalRangeTitle', routines: 'routinesTitle', exercises: 'exercisesTitle', favorites: 'favorites', pitch: 'livePitchDetector', voxlabai: 'voxlabaiTitle', instrumentTuner: 'instrumentTuner', studies: 'studiesTitle', tokens: 'tokensTitle' };
     const currentTitle = titleMap[activeView] || '';
 
     // Load built-in Piano samples on app initialization
@@ -2055,8 +2018,8 @@ export default function App() {
                                         onNextInRoutine={handleNextExerciseInRoutine}
                                         isFullscreen={isFullscreen}
                                         onToggleFullscreen={handleToggleFullscreen}
-                                        isExerciseFavorite={favoriteExerciseIds.includes(getExerciseId(selectedExercise))}
-                                        isRoutineFavorite={currentRoutine ? favoriteRoutineIds.includes(currentRoutine.routine.id) : false}
+                                        isExerciseFavorite={favoriteExerciseIdSet.has(getExerciseId(selectedExercise))}
+                                        isRoutineFavorite={currentRoutine ? favoriteRoutineIdSet.has(currentRoutine.routine.id) : false}
                                         onToggleFavoriteExercise={() => handleToggleFavoriteExercise(selectedExercise)}
                                         onToggleFavoriteRoutine={() => currentRoutine && handleToggleFavoriteRoutine(currentRoutine.routine.id)}
                                         onRestart={() => setExerciseKey(prev => prev + 1)}

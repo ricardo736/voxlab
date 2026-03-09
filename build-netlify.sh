@@ -14,7 +14,7 @@ echo "Building Tailwind CSS..."
 npx @tailwindcss/cli -i index.css -o dist/index.css --minify
 
 # Use esbuild (API key comes from Netlify env var GEMINI_API_KEY, not hardcoded)
-./node_modules/.bin/esbuild index.tsx --bundle --outfile=dist/bundle.js --loader:.tsx=tsx --loader:.mov=file --loader:.mp4=file --jsx=automatic --define:process.env.NODE_ENV='"production"' --define:process.env.API_KEY='"'$GEMINI_API_KEY'"' --define:import.meta.env.VITE_BETA_BUILD='"'$VITE_BETA_BUILD'"'
+./node_modules/.bin/esbuild index.tsx --bundle --minify --outfile=dist/bundle.js --loader:.tsx=tsx --loader:.mov=file --loader:.mp4=file --jsx=automatic --define:process.env.NODE_ENV='"production"' --define:process.env.API_KEY='"'$GEMINI_API_KEY'"' --define:import.meta.env.VITE_BETA_BUILD='"'$VITE_BETA_BUILD'"'
 
 # 2. Process HTML
 echo "Processing HTML..."
